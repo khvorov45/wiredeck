@@ -1,0 +1,1 @@
+odin build code -debug -out:build/wiredeck.exe -subsystem:windows
