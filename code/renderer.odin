@@ -2,21 +2,14 @@ package wiredeck
 
 import "core:math"
 
-import mu "vendor:microui"
-
 Renderer :: struct {
 	pixels:	    []u32,
 	pixels_dim:	[2]int,
 }
 
-Rect2d :: struct {
-	topleft: [2]f32,
-	dim:     [2]f32,
-}
-
-LineSegment2d :: struct {
-	start: [2]f32,
-	end:   [2]f32,
+LineSegment2i :: struct {
+	start: [2]int,
+	end:   [2]int,
 }
 
 init_renderer :: proc(renderer: ^Renderer, width, height: int) {
@@ -35,23 +28,28 @@ clear_buffers :: proc(renderer: ^Renderer) {
 	}
 }
 
-draw_rect_px :: proc(renderer: ^Renderer, rect: Rect2d, color: [4]f32) {
-	bottomright := rect.topleft + rect.dim
-	for row in int(math.ceil(rect.topleft.y)) ..< int(math.ceil(bottomright.y)) {
-		for col in int(math.ceil(rect.topleft.x)) ..< int(math.ceil(bottomright.x)) {
-			px_index := row * renderer.pixels_dim.x + col
-			old_col := renderer.pixels[px_index]
-			new_col32 := color_blend(old_col, color)
-			renderer.pixels[px_index] = new_col32
+draw_rect_px :: proc(renderer: ^Renderer, rect_init: Rect2i, color: [4]f32) {
+	rect := clip_rect_to_rect(rect_init, Rect2i{{0, 0}, renderer.pixels_dim})
+	if is_valid_draw_rect(rect, renderer.pixels_dim) {
+		bottomright := rect.topleft + rect.dim
+		for row in rect.topleft.y ..< bottomright.y {
+			for col in rect.topleft.x ..< bottomright.x {
+				px_index := row * renderer.pixels_dim.x + col
+				old_col := renderer.pixels[px_index]
+				new_col32 := color_blend(old_col, color)
+				renderer.pixels[px_index] = new_col32
+			}
 		}
 	}
 }
 
 draw_line_px :: proc(
 	renderer: ^Renderer,
-	line: LineSegment2d,
+	line_init: LineSegment2i,
 	color: [4]f32,
 ) {
+	line := clip_line_to_rect(line_init, Rect2i{{0, 0}, renderer.pixels_dim})
+
 	delta := line.end - line.start
 	run_length := max(abs(delta.x), abs(delta.y))
 	inc := delta / run_length
@@ -59,8 +57,8 @@ draw_line_px :: proc(
 	cur := line.start
 	for _ in 0 ..< int(run_length) {
 
-		cur_rounded_x := int(math.round(cur.x))
-		cur_rounded_y := int(math.round(cur.y))
+		cur_rounded_x := cur.x
+		cur_rounded_y := cur.y
 
 		px_index := cur_rounded_y * renderer.pixels_dim.x + cur_rounded_x
 		old_col := renderer.pixels[px_index]
@@ -77,79 +75,90 @@ draw_alpha_tex_rect_px :: proc(
 	tex_dim: [2]int,
 	tex_alpha: []u8,
 	tex_pitch: int,
-	topleft: [2]f32,
+	topleft: [2]int,
 	color: [4]f32,
 ) {
-	px_coords := [2]int{int(math.ceil(topleft.x)), int(math.ceil(topleft.y))}
+	px_rect: Rect2i
+	px_rect.topleft = topleft
+	px_rect.dim = tex_dim
 
-	cur_px_coord := px_coords
-	for y_coord in tex_coords.y ..< tex_coords.y + tex_dim.y {
-		for x_coord in tex_coords.x ..< tex_coords.x + tex_dim.x {
+	px_rect_clipped := clip_rect_to_rect(px_rect, Rect2i{{0, 0}, renderer.pixels_dim})
 
-			tex_index := y_coord * tex_pitch + x_coord
-			tex_alpha := tex_alpha[tex_index]
-			tex_alpha01 := f32(tex_alpha) / 255
-			tex_col := color
-			tex_col.a *= tex_alpha01
+	if is_valid_draw_rect(px_rect_clipped, renderer.pixels_dim) {
 
-			px_index := cur_px_coord.y * renderer.pixels_dim.x + cur_px_coord.x
-			old_px_col := renderer.pixels[px_index]
-			new_px_col := color_blend(old_px_col, tex_col)
-			renderer.pixels[px_index] = new_px_col
+		cur_px_coord := px_rect_clipped.topleft
+		tex_topleft := tex_coords + (px_rect_clipped.topleft - px_rect.topleft)
+		tex_bottomright := tex_topleft + px_rect_clipped.dim
 
-			cur_px_coord.x += 1
+		for y_coord in tex_topleft.y ..< tex_bottomright.y {
+			for x_coord in tex_topleft.x ..< tex_bottomright.x {
+
+				tex_index := y_coord * tex_pitch + x_coord
+				tex_alpha := tex_alpha[tex_index]
+				tex_alpha01 := f32(tex_alpha) / 255
+				tex_col := color
+				tex_col.a *= tex_alpha01
+
+				px_index := cur_px_coord.y * renderer.pixels_dim.x + cur_px_coord.x
+				old_px_col := renderer.pixels[px_index]
+				new_px_col := color_blend(old_px_col, tex_col)
+				renderer.pixels[px_index] = new_px_col
+
+				cur_px_coord.x += 1
+			}
+
+			cur_px_coord.y += 1
+			cur_px_coord.x = px_rect_clipped.topleft.x
 		}
-
-		cur_px_coord.y += 1
-		cur_px_coord.x = px_coords.x
 	}
 }
 
+/*
 draw_glyph_px :: proc(
 	renderer: ^Renderer,
 	glyph: u8,
-	topleft: [2]f32,
+	topleft: [2]int,
 	color: [4]f32,
-) -> f32 {
+) -> int {
 	tex_coords := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + int(glyph)]
 	draw_alpha_tex_rect_px(
 		renderer, 
 		[2]int{int(tex_coords.x), int(tex_coords.y)},
 		[2]int{int(tex_coords.w), int(tex_coords.h)},
-		mu.default_atlas_alpha[:], 
-		mu.DEFAULT_ATLAS_WIDTH, 
-		topleft, 
+		mu.default_atlas_alpha[:],
+		mu.DEFAULT_ATLAS_WIDTH,
+		topleft,
 		color,
 	)
-	return f32(tex_coords.w)
+	return int(tex_coords.w)
 }
 
 draw_icon_px :: proc(
 	renderer: ^Renderer,
 	icon: mu.Icon,
-	rect: Rect2d,
+	rect: Rect2i,
 	color: [4]f32,
-) -> f32 {
+) -> int {
 	tex_coords := mu.default_atlas[icon]
-	icon_dim := [2]f32{f32(tex_coords.w), f32(tex_coords.h)}
+	icon_dim := [2]int{int(tex_coords.w), int(tex_coords.h)}
 	slack := rect.dim - icon_dim
-	topleft := rect.topleft + slack * 0.5
+	topleft := rect.topleft + slack / 2
 	draw_alpha_tex_rect_px(
 		renderer, 
 		[2]int{int(tex_coords.x), int(tex_coords.y)},
 		[2]int{int(tex_coords.w), int(tex_coords.h)},
 		mu.default_atlas_alpha[:], 
 		mu.DEFAULT_ATLAS_WIDTH, 
-		topleft, 
+		topleft,
 		color,
 	)
-	return f32(tex_coords.w)
+	return int(tex_coords.w)
 }
 
 draw_string_px :: proc(
 	renderer: ^Renderer,
 	str: string,
-	topleft: [2]f32,
+	topleft: [2]int,
 	color: [4]f32,
 ) {
 
@@ -161,29 +170,31 @@ draw_string_px :: proc(
 	}
 
 }
+*/
 
-clip_to_px_buffer_rect :: proc(rect: Rect2d, px_dim: [2]int) -> Rect2d {
+clip_rect_to_rect :: proc(rect: Rect2i, bounds: Rect2i) -> Rect2i {
 
-	dim_f32 := [2]f32{f32(px_dim.x), f32(px_dim.y)}
-	result: Rect2d
+	result: Rect2i
 
 	topleft := rect.topleft
 	bottomright := topleft + rect.dim
 
-	x_overlaps := topleft.x < dim_f32.x && bottomright.x > 0
-	y_overlaps := topleft.y < dim_f32.y && bottomright.y > 0
+	bound_topleft := bounds.topleft
+	bound_bottomright := bound_topleft + bounds.dim
+
+	x_overlaps := topleft.x < bound_bottomright.x && bottomright.x >= bound_topleft.x
+	y_overlaps := topleft.y < bound_bottomright.y && bottomright.y >= bound_topleft.y
 
 	if x_overlaps && y_overlaps {
 
-		topleft.x = max(topleft.x, 0)
-		topleft.y = max(topleft.y, 0)
+		topleft.x = max(topleft.x, bound_topleft.x)
+		topleft.y = max(topleft.y, bound_topleft.y)
 
-		bottomright.x = min(bottomright.x, dim_f32.x)
-		bottomright.y = min(bottomright.y, dim_f32.y)
+		bottomright.x = min(bottomright.x, bound_bottomright.x)
+		bottomright.y = min(bottomright.y, bound_bottomright.y)
 
 		result.topleft = topleft
 		result.dim = bottomright - topleft
-
 	}
 
 	return result
@@ -191,27 +202,28 @@ clip_to_px_buffer_rect :: proc(rect: Rect2d, px_dim: [2]int) -> Rect2d {
 
 // Liang–Barsky algorithm
 // https://en.wikipedia.org/wiki/Liang%E2%80%93Barsky_algorithm
-clip_to_px_buffer_line :: proc(line: LineSegment2d, px_dim: [2]int) -> LineSegment2d {
+clip_line_to_rect :: proc(line: LineSegment2i, bounds: Rect2i) -> LineSegment2i {
 
-	dim_f32 := [2]f32{f32(px_dim.x - 1), f32(px_dim.y - 1)}
+	bound_topleft := bounds.topleft
+	bound_bottomright := bounds.topleft + bounds.dim
 
 	p1 := -(line.end.x - line.start.x)
 	p2 := -p1
 	p3 := -(line.end.y - line.start.y)
 	p4 := -p3
 
-	q1 := line.start.x
-	q2 := dim_f32.x - line.start.x
-	q3 := line.start.y
-	q4 := dim_f32.y - line.start.y
+	q1 := line.start.x - bound_topleft.x
+	q2 := bound_bottomright.x - line.start.x
+	q3 := line.start.y - bound_topleft.y
+	q4 := bound_bottomright.y - line.start.y
 
-	posarr, negarr: [5]f32
+	posarr, negarr: [5]int
 	posarr[0] = 1
 	negarr[0] = 0
 	posind := 1
 	negind := 1
 
-	result: LineSegment2d
+	result: LineSegment2i
 
 	// NOTE(khvorov) Line parallel to clipping window
 	if (p1 == 0 && q1 < 0) || (p2 == 0 && q2 < 0) || (p3 == 0 && q3 < 0) || (p4 == 0 && q4 <
@@ -267,12 +279,14 @@ clip_to_px_buffer_line :: proc(line: LineSegment2d, px_dim: [2]int) -> LineSegme
 	result.end.x = line.start.x + p2 * rn2
 	result.end.y = line.start.y + p4 * rn2
 
-	// NOTE(khvorov) To avoid getting ambushed by floating point error
-	result.start.x = clamp(result.start.x, 0, f32(px_dim.x - 1))
-	result.start.y = clamp(result.start.y, 0, f32(px_dim.y - 1))
-	result.end.x = clamp(result.end.x, 0, f32(px_dim.x - 1))
-	result.end.y = clamp(result.end.y, 0, f32(px_dim.y - 1))
+	return result
+}
 
+is_valid_draw_rect :: proc(rect: Rect2i, px_dim: [2]int) -> bool {
+	rect_bottomright := rect.topleft + rect.dim
+	result := rect.dim.x > 0 && rect.dim.y > 0 && 
+		rect.topleft.x >= 0 && rect.topleft.y >= 0 && 
+		rect_bottomright.x <= px_dim.x && rect_bottomright.y <= px_dim.y
 	return result
 }
 
