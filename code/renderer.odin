@@ -1,7 +1,5 @@
 package wiredeck
 
-import "core:math"
-
 Renderer :: struct {
 	pixels:	    []u32,
 	pixels_dim:	[2]int,
