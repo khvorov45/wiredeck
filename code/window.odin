@@ -1,0 +1,9 @@
+package wiredeck
+
+Window :: struct {
+	is_running:    bool,
+	is_fullscreen: bool,
+	is_focused:    bool,
+	dim:           [2]int,
+	platform:      PlatformWindow,
+}
