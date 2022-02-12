@@ -1,7 +1,8 @@
 package wiredeck
 
 import "core:math"
-import "core:math/linalg"
+
+import mu "vendor:microui"
 
 Renderer :: struct {
 	pixels:	    []u32,
@@ -55,13 +56,8 @@ draw_line_px :: proc(
 	run_length := max(abs(delta.x), abs(delta.y))
 	inc := delta / run_length
 
-	total_length := linalg.length(delta)
-	inc_length := linalg.length(inc)
-	one_over_w_start: f32 = 0
-	one_over_w_end: f32 = 0
-
 	cur := line.start
-	for step in 0 ..< int(run_length) {
+	for _ in 0 ..< int(run_length) {
 
 		cur_rounded_x := int(math.round(cur.x))
 		cur_rounded_y := int(math.round(cur.y))
@@ -73,6 +69,97 @@ draw_line_px :: proc(
 		
 		cur += inc
 	}
+}
+
+draw_alpha_tex_rect_px :: proc(
+	renderer: ^Renderer,
+	tex_coords: [2]int,
+	tex_dim: [2]int,
+	tex_alpha: []u8,
+	tex_pitch: int,
+	topleft: [2]f32,
+	color: [4]f32,
+) {
+	px_coords := [2]int{int(math.ceil(topleft.x)), int(math.ceil(topleft.y))}
+
+	cur_px_coord := px_coords
+	for y_coord in tex_coords.y ..< tex_coords.y + tex_dim.y {
+		for x_coord in tex_coords.x ..< tex_coords.x + tex_dim.x {
+
+			tex_index := y_coord * tex_pitch + x_coord
+			tex_alpha := tex_alpha[tex_index]
+			tex_alpha01 := f32(tex_alpha) / 255
+			tex_col := color
+			tex_col.a *= tex_alpha01
+
+			px_index := cur_px_coord.y * renderer.pixels_dim.x + cur_px_coord.x
+			old_px_col := renderer.pixels[px_index]
+			new_px_col := color_blend(old_px_col, tex_col)
+			renderer.pixels[px_index] = new_px_col
+
+			cur_px_coord.x += 1
+		}
+
+		cur_px_coord.y += 1
+		cur_px_coord.x = px_coords.x
+	}
+}
+
+draw_glyph_px :: proc(
+	renderer: ^Renderer,
+	glyph: u8,
+	topleft: [2]f32,
+	color: [4]f32,
+) -> f32 {
+	tex_coords := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + int(glyph)]
+	draw_alpha_tex_rect_px(
+		renderer, 
+		[2]int{int(tex_coords.x), int(tex_coords.y)},
+		[2]int{int(tex_coords.w), int(tex_coords.h)},
+		mu.default_atlas_alpha[:], 
+		mu.DEFAULT_ATLAS_WIDTH, 
+		topleft, 
+		color,
+	)
+	return f32(tex_coords.w)
+}
+
+draw_icon_px :: proc(
+	renderer: ^Renderer,
+	icon: mu.Icon,
+	rect: Rect2d,
+	color: [4]f32,
+) -> f32 {
+	tex_coords := mu.default_atlas[icon]
+	icon_dim := [2]f32{f32(tex_coords.w), f32(tex_coords.h)}
+	slack := rect.dim - icon_dim
+	topleft := rect.topleft + slack * 0.5
+	draw_alpha_tex_rect_px(
+		renderer, 
+		[2]int{int(tex_coords.x), int(tex_coords.y)},
+		[2]int{int(tex_coords.w), int(tex_coords.h)},
+		mu.default_atlas_alpha[:], 
+		mu.DEFAULT_ATLAS_WIDTH, 
+		topleft, 
+		color,
+	)
+	return f32(tex_coords.w)
+}
+
+draw_string_px :: proc(
+	renderer: ^Renderer,
+	str: string,
+	topleft: [2]f32,
+	color: [4]f32,
+) {
+
+	topleft := topleft
+	for i in 0 ..< len(str) {
+		glyph := str[i]
+		glyph_width := draw_glyph_px(renderer, glyph, topleft, color)
+		topleft.x += glyph_width
+	}
+
 }
 
 clip_to_px_buffer_rect :: proc(rect: Rect2d, px_dim: [2]int) -> Rect2d {
@@ -207,7 +294,7 @@ color_to_4f32 :: proc(argb: u32) -> [4]f32 {
 
 color_blend :: proc(old: u32, new: [4]f32) -> u32 {
 	old4 := color_to_4f32(old)
-	new := (1 - new.a) * old4 + new.a * new
-	new32 := color_to_u32argb(new)
+	new4 := (1 - new.a) * old4 + new.a * new
+	new32 := color_to_u32argb(new4)
 	return new32
 }

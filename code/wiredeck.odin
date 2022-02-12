@@ -24,7 +24,7 @@ main :: proc() {
 
 		mu.begin(&ui)
 
-		if mu.begin_window(&ui, "window", mu.Rect{0, 0, 300, 300}) {
+		if mu.begin_window(&ui, "window", mu.Rect{100, 100, 300, 300}) {
 
 			mu.end_window(&ui)			
 		}
@@ -49,8 +49,22 @@ main :: proc() {
 				draw_rect_px(&renderer, rect_clipped, mu_col4, ) 
 
 			case ^mu.Command_Text:
-			case ^mu.Command_Jump:
+				mu_col := cmd.color				
+				mu_col4 := mu_color_to_4f32(cmd.color)
+				coords := [2]f32{f32(cmd.pos.x), f32(cmd.pos.y)}
+				draw_string_px(&renderer, cmd.str, coords, mu_col4)
+
 			case ^mu.Command_Icon:
+				mu_col := cmd.color				
+				mu_col4 := mu_color_to_4f32(cmd.color)
+				mu_rect := cmd.rect
+				rect := Rect2d{
+					[2]f32{f32(mu_rect.x), f32(mu_rect.y)},
+					[2]f32{f32(mu_rect.w), f32(mu_rect.h)},
+				}
+				draw_icon_px(&renderer, cmd.id, rect, mu_col4)
+
+			case ^mu.Command_Jump:
 			case ^mu.Command_Clip:
 			}
 
