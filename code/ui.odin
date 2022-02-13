@@ -3,9 +3,10 @@ package wiredeck
 import "core:mem"
 
 UI :: struct {
+	input: ^Input,
+	font: ^Font,
 	total_dim: [2]int,
 	container: [dynamic]Rect2i,
-	input: ^Input,
 	current_layout: Layout,
 	current_commands: [dynamic]UICommand,
 	elements: map[string]Rect2i,
@@ -36,6 +37,7 @@ ButtonMouseState :: enum {
 
 UICommand :: union {
 	UICommandRect,
+	UICommandText,
 }
 
 UICommandRect :: struct {
@@ -43,11 +45,18 @@ UICommandRect :: struct {
 	color: [4]f32,
 }
 
-init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input) {
+UICommandText :: struct {
+	str: string,
+	rect: Rect2i,
+	color: [4]f32,
+}
+
+init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 	ui^ = UI{
+		input = input,
+		font = font,
 		total_dim = [2]int{width, height},
 		container = make([dynamic]Rect2i, 0, 10),
-		input = input,
 		current_commands = make([dynamic]UICommand, 0, 50),
 	}
 	append(&ui.container, Rect2i{{0, 0}, {width, height}})
@@ -131,8 +140,8 @@ dropdown :: proc(ui: ^UI, label: string) -> ButtonMouseState {
 	padding_x := [2]int{5, 5}
 	padding_y := [2]int{5, 5}
 
-	text_width := get_string_width(label)
-	text_height := get_string_height(label)
+	text_width := get_string_width(ui.font, label)
+	text_height := get_string_height(ui.font, label)
 
 	element_dim := [2]int{
 		text_width + padding_x[0] + padding_x[1], 
@@ -151,7 +160,12 @@ dropdown :: proc(ui: ^UI, label: string) -> ButtonMouseState {
 	}
 
 	if rect, ok := _take_rect(ui.container[len(ui.container) - 1], dir, size); ok {
-		
+
+		text_rect: Rect2i
+		text_rect.dim = [2]int{text_width, text_height}
+		text_slack := rect.dim - text_rect.dim
+		text_rect.topleft = rect.topleft + text_slack / 2
+
 		should_redraw := true
 		if el, ok := ui.elements[label]; ok {
 			if el == rect {
@@ -161,19 +175,10 @@ dropdown :: proc(ui: ^UI, label: string) -> ButtonMouseState {
 
 		if should_redraw {
 			append(&ui.current_commands, UICommandRect{rect, [4]f32{0, 1, 0, 1}})
+			append(&ui.current_commands, UICommandText{label, text_rect, [4]f32{0, 0, 1, 1}})
 			ui.elements[label] = rect
 		}
 	}
 
 	return state
-}
-
-get_string_width :: proc(str: string) -> int {
-	result := len(str) * 10
-	return result
-}
-
-get_string_height :: proc(str: string) -> int {
-	result := 10
-	return result
 }

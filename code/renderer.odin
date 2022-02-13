@@ -111,26 +111,41 @@ draw_alpha_tex_rect_px :: proc(
 	}
 }
 
-/*
 draw_glyph_px :: proc(
 	renderer: ^Renderer,
-	glyph: u8,
+	font: ^Font,
+	glyph: rune,
 	topleft: [2]int,
 	color: [4]f32,
-) -> int {
-	tex_coords := mu.default_atlas[mu.DEFAULT_ATLAS_FONT + int(glyph)]
+) {
+	tex_coords, offset := get_glyph_tex_coords_and_offset(font, glyph)
+	topleft_offset := topleft + offset
 	draw_alpha_tex_rect_px(
 		renderer, 
-		[2]int{int(tex_coords.x), int(tex_coords.y)},
-		[2]int{int(tex_coords.w), int(tex_coords.h)},
-		mu.default_atlas_alpha[:],
-		mu.DEFAULT_ATLAS_WIDTH,
-		topleft,
+		tex_coords.topleft,
+		tex_coords.dim,
+		font.alphamap,
+		font.alphamap_dim.x,
+		topleft_offset,
 		color,
 	)
-	return int(tex_coords.w)
 }
 
+draw_text_px :: proc(
+	renderer: ^Renderer,
+	font: ^Font,
+	str: string,
+	topleft: [2]int,
+	color: [4]f32,
+) {
+	cur_topleft := topleft
+	for ch in str {
+		draw_glyph_px(renderer, font, ch, cur_topleft, color)
+		cur_topleft.x += font.px_width
+	}
+}
+
+/*
 draw_icon_px :: proc(
 	renderer: ^Renderer,
 	icon: mu.Icon,
@@ -151,22 +166,6 @@ draw_icon_px :: proc(
 		color,
 	)
 	return int(tex_coords.w)
-}
-
-draw_string_px :: proc(
-	renderer: ^Renderer,
-	str: string,
-	topleft: [2]int,
-	color: [4]f32,
-) {
-
-	topleft := topleft
-	for i in 0 ..< len(str) {
-		glyph := str[i]
-		glyph_width := draw_glyph_px(renderer, glyph, topleft, color)
-		topleft.x += glyph_width
-	}
-
 }
 */
 

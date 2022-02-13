@@ -10,8 +10,11 @@ main :: proc() {
 
 	input: Input
 
+	font: Font
+	init_font(&font, "fonts/LiberationMono-Regular.ttf")
+
 	ui: UI
-	init_ui(&ui, window.dim.x, window.dim.y, &input)
+	init_ui(&ui, window.dim.x, window.dim.y, &input, &font)
 
 	for window.is_running {
 
@@ -33,6 +36,8 @@ main :: proc() {
 			switch cmd in cmd_ui {
 			case UICommandRect:
 				draw_rect_px(&renderer, cmd.rect, cmd.color)
+			case UICommandText:
+				draw_text_px(&renderer, &font, cmd.str, cmd.rect.topleft, cmd.color)
 			}
 		}
 
