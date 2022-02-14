@@ -11,18 +11,16 @@ LineSegment2i :: struct {
 }
 
 init_renderer :: proc(renderer: ^Renderer, width, height: int) {
-
 	renderer^ = Renderer {
 		pixels = make([]u32, width * height),
 		pixels_dim = [2]int{width, height},
 	}
-
-	clear_buffers(renderer)
 }
 
-clear_buffers :: proc(renderer: ^Renderer) {
+clear_buffers :: proc(renderer: ^Renderer, color: [4]f32) {
+	color32 := color_to_u32argb(color)
 	for pixel in &renderer.pixels {
-		pixel = 0
+		pixel = color32
 	}
 }
 

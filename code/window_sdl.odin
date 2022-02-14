@@ -157,6 +157,9 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 		case sdl.BUTTON_RIGHT:
 			record_key(input, .MouseRight, ended_down)
 		}
+
+	case .MOUSEMOTION:
+		input.cursor_pos = [2]int{int(event.motion.x), int(event.motion.y)}
 	}
 }
 

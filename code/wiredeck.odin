@@ -18,15 +18,23 @@ main :: proc() {
 
 	for window.is_running {
 
+		//
+		// NOTE(khvorov) Input
+		//
+
 		clear_half_transitions(&input)
 		wait_for_input(&window, &input)
+
+		//
+		// NOTE(khvorov) UI
+		//
 
 		ui_begin(&ui)
 
 		if begin_container(&ui, .Top, font.px_height + ui.theme.sizes[.ButtonPadding]) {
 			ui.current_layout = .Horizontal
-			dropdown(&ui, "File")
-			dropdown(&ui, "Edit")
+			button(&ui, "File")
+			button(&ui, "Edit")
 
 			end_container(&ui)
 		}
@@ -36,7 +44,19 @@ main :: proc() {
 			end_container(&ui)
 		}
 
+		if begin_container(&ui, .Left, 150) {
+			ui.current_layout = .Vertical
+
+			end_container(&ui)
+		}		
+
 		ui_end(&ui)
+
+		//
+		// NOTE(khvorov) Render
+		//
+
+		clear_buffers(&renderer, ui.theme.colors[.Background])
 
 		for cmd_ui in ui.commands {
 			switch cmd in cmd_ui {

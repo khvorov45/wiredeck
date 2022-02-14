@@ -2,8 +2,7 @@ package wiredeck
 
 Input :: struct {
 	keys:         [KeyID]Key,
-	cursor_pos:   [2]f32,
-	cursor_delta: [2]f32,
+	cursor_pos:   [2]int,
 }
 
 //odinfmt: disable
@@ -33,7 +32,7 @@ clear_half_transitions :: proc(input: ^Input) {
 	}
 }
 
-was_pressed :: proc(input: Input, key_id: KeyID) -> bool {
+was_pressed :: proc(input: ^Input, key_id: KeyID) -> bool {
 	key := input.keys[key_id] 
 	result := false 
 	if key.half_transition_count >= 2 {
@@ -44,7 +43,7 @@ was_pressed :: proc(input: Input, key_id: KeyID) -> bool {
 	return result
 }
 
-was_unpressed :: proc(input: Input, key_id: KeyID) -> bool {
+was_unpressed :: proc(input: ^Input, key_id: KeyID) -> bool {
 	key := input.keys[key_id] 
 	result := false 
 	if key.half_transition_count >= 2 {
