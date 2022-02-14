@@ -23,16 +23,22 @@ main :: proc() {
 
 		ui_begin(&ui)
 
-		if begin_container(&ui, .Top, 50, "TopStrip") {
+		if begin_container(&ui, .Top, font.px_height + ui.theme.sizes[.ButtonPadding]) {
 			ui.current_layout = .Horizontal
 			dropdown(&ui, "File")
+			dropdown(&ui, "Edit")
+
+			end_container(&ui)
+		}
+
+		if begin_container(&ui, .Bottom, font.px_height + ui.theme.sizes[.ButtonPadding]) {
 
 			end_container(&ui)
 		}
 
 		ui_end(&ui)
 
-		for cmd_ui in ui.current_commands {
+		for cmd_ui in ui.commands {
 			switch cmd in cmd_ui {
 			case UICommandRect:
 				draw_rect_px(&renderer, cmd.rect, cmd.color)

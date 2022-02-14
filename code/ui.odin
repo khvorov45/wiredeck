@@ -5,11 +5,26 @@ import "core:mem"
 UI :: struct {
 	input: ^Input,
 	font: ^Font,
+	theme: Theme,
 	total_dim: [2]int,
-	container: [dynamic]Rect2i,
 	current_layout: Layout,
-	current_commands: [dynamic]UICommand,
-	elements: map[string]Rect2i,
+	container_stack: [dynamic]Rect2i,
+	commands: [dynamic]UICommand,
+}
+
+Theme :: struct {
+	colors: [ColorID][4]f32,
+	sizes: [SizeID]int,
+}
+
+ColorID :: enum {
+	ContainerBackground,
+	ButtonBackground,
+	ButtonText,
+}
+
+SizeID :: enum {
+	ButtonPadding,
 }
 
 Rect2i :: struct {
@@ -52,24 +67,36 @@ UICommandText :: struct {
 }
 
 init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
+
+	theme: Theme
+
+	theme.colors[.ContainerBackground] = [4]f32{0.1, 0.1, 0.1, 1}
+	theme.colors[.ButtonBackground] = [4]f32{0.2, 0.2, 0.2, 1}
+	theme.colors[.ButtonText] = [4]f32{0.9, 0.9, 0.9, 1}
+
+	theme.sizes[.ButtonPadding] = 5
+
 	ui^ = UI{
 		input = input,
 		font = font,
+		theme = theme,
 		total_dim = [2]int{width, height},
-		container = make([dynamic]Rect2i, 0, 10),
-		current_commands = make([dynamic]UICommand, 0, 50),
+		current_layout = .Horizontal,
+		container_stack = make([dynamic]Rect2i, 0, 10),
+		commands = make([dynamic]UICommand, 0, 50),
 	}
-	append(&ui.container, Rect2i{{0, 0}, {width, height}})
 }
 
 ui_begin :: proc(ui: ^UI) {
-	clear(&ui.current_commands)
-	(^mem.Raw_Dynamic_Array)(&ui.container).len = 1
+	clear(&ui.commands)
+	clear(&ui.container_stack)
+	root_rect := Rect2i{{0, 0}, ui.total_dim}
+	append(&ui.container_stack, root_rect)
 }
 
 ui_end :: proc(ui: ^UI) {}
 
-_take_rect :: proc(from: Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i, success: bool) {
+_take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i, success: bool) {
 
 	size: int
 	switch dir {
@@ -98,47 +125,53 @@ _take_rect :: proc(from: Rect2i, dir: Direction, size_init: int) -> (rect: Rect2
 			rect.dim = [2]int{size, from.dim.y}
 		}
 
+		#partial switch dir {
+		case .Top:
+			from.topleft.y += size
+		case .Left:
+			from.topleft.x += size
+		}
+
+		switch dir {
+		case .Top, .Bottom:
+			from.dim.y -= size
+		case .Left, .Right:
+			from.dim.x -= size
+		}
+
 		success = true
 	}
 
 	return rect, success
 }
 
-begin_container :: proc(ui: ^UI, dir: Direction, size_init: int, id: string) -> bool {
+begin_container :: proc(ui: ^UI, dir: Direction, size_init: int) -> bool {
 
 	result := false
-	if rect, ok := _take_rect(ui.container[len(ui.container) - 1], dir, size_init); ok {
+	if rect, ok := _take_rect(&ui.container_stack[len(ui.container_stack) - 1], dir, size_init); ok {
+		append(&ui.container_stack, rect)
 
-		should_redraw := true
-		if el, ok := ui.elements[id]; ok {
-			if el == rect {
-				should_redraw = false
-			}
-		}
-
-		if should_redraw {
-			cmd := UICommandRect{rect, [4]f32{1, 0, 0, 1}}
-			append(&ui.current_commands, cmd)
-			ui.elements[id] = rect
-		}
+		cmd := UICommandRect{rect, ui.theme.colors[.ContainerBackground]}
+		append(&ui.commands, cmd)
 
 		result = true
-		append(&ui.container, rect)
 	}
 
 	return result
 }
 
 end_container :: proc(ui: ^UI) {
-	pop(&ui.container)
+	pop(&ui.container_stack)
 }
 
 dropdown :: proc(ui: ^UI, label: string) -> ButtonMouseState {
 
 	state: ButtonMouseState = .Normal
 
-	padding_x := [2]int{5, 5}
-	padding_y := [2]int{5, 5}
+	pad := ui.theme.sizes[.ButtonPadding]
+
+	padding_x := [2]int{pad, pad}
+	padding_y := [2]int{0, pad}
 
 	text_width := get_string_width(ui.font, label)
 	text_height := get_string_height(ui.font, label)
@@ -159,25 +192,19 @@ dropdown :: proc(ui: ^UI, label: string) -> ButtonMouseState {
 		dir = .Top
 	}
 
-	if rect, ok := _take_rect(ui.container[len(ui.container) - 1], dir, size); ok {
+	if rect, ok := _take_rect(&ui.container_stack[len(ui.container_stack) - 1], dir, size); ok {
+
+		element_slack := rect.dim - element_dim
+		element_topleft := rect.topleft + element_slack / 2
 
 		text_rect: Rect2i
 		text_rect.dim = [2]int{text_width, text_height}
-		text_slack := rect.dim - text_rect.dim
-		text_rect.topleft = rect.topleft + text_slack / 2
+		text_rect.topleft = element_topleft
+		text_rect.topleft.x += padding_x[0]
+		text_rect.topleft.y += padding_y[0]
 
-		should_redraw := true
-		if el, ok := ui.elements[label]; ok {
-			if el == rect {
-				should_redraw = false
-			}
-		}
-
-		if should_redraw {
-			append(&ui.current_commands, UICommandRect{rect, [4]f32{0, 1, 0, 1}})
-			append(&ui.current_commands, UICommandText{label, text_rect, [4]f32{0, 0, 1, 1}})
-			ui.elements[label] = rect
-		}
+		append(&ui.commands, UICommandRect{rect, ui.theme.colors[.ButtonBackground]})
+		append(&ui.commands, UICommandText{label, text_rect, ui.theme.colors[.ButtonText]})
 	}
 
 	return state

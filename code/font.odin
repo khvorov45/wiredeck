@@ -22,7 +22,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 	
 	alphamap_dim := [2]int{1000, 1000} // TODO(khvorov) Better size here
 	firstchar: rune = '!'
-	char_count := int('~') - int(firstchar)
+	char_count := int('~') - int(firstchar) + 1
 
 	font^ = Font{
 		px_height = 16,
