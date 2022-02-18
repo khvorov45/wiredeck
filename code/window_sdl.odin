@@ -145,6 +145,9 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 		case .FOCUS_GAINED:
 			window.is_focused = true
 
+		case .LEAVE:
+			input.cursor_pos = -1
+
 		}
 
 	case .MOUSEBUTTONDOWN, .MOUSEBUTTONUP:
