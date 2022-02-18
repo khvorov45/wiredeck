@@ -199,6 +199,14 @@ button :: proc(ui: ^UI, label_str: string, active: bool = false) -> MouseState {
 	return state
 }
 
+point_inside_rect :: proc(point: [2]int, rect: Rect2i) -> bool {
+	rect_bottomright := rect.topleft + rect.dim
+	x_overlaps := point.x >= rect.topleft.x && point.x < rect_bottomright.x
+	y_overlaps := point.y >= rect.topleft.y && point.y < rect_bottomright.y
+	result := x_overlaps && y_overlaps
+	return result
+}
+
 _take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i, success: bool) {
 
 	size: int
@@ -248,17 +256,9 @@ _take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect
 	return rect, success
 }
 
-_point_inside_rect :: proc(point: [2]int, rect: Rect2i) -> bool {
-	rect_bottomright := rect.topleft + rect.dim
-	x_overlaps := point.x >= rect.topleft.x && point.x < rect_bottomright.x
-	y_overlaps := point.y >= rect.topleft.y && point.y < rect_bottomright.y
-	result := x_overlaps && y_overlaps
-	return result
-}
-
 _get_rect_mouse_state :: proc(input: ^Input, rect: Rect2i) -> MouseState {
 	state := MouseState.Normal
-	if _point_inside_rect(input.cursor_pos, rect) {
+	if point_inside_rect(input.cursor_pos, rect) {
 		state = .Hovered
 		mouse_left_down := input.keys[.MouseLeft].ended_down
 		if was_pressed(input, .MouseLeft) && mouse_left_down {

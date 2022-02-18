@@ -87,9 +87,9 @@ main :: proc() {
 
 			if top_bar_open_menu != .None {
 				if was_pressed(&input, .MouseLeft) || was_pressed(&input, .MouseRight) {
-					file_pressed := _point_inside_rect(input.cursor_pos, file_button_rect)
-					edit_pressed := _point_inside_rect(input.cursor_pos, edit_button_rect)
-					float_pressed := _point_inside_rect(input.cursor_pos, float_rect)
+					file_pressed := point_inside_rect(input.cursor_pos, file_button_rect)
+					edit_pressed := point_inside_rect(input.cursor_pos, edit_button_rect)
+					float_pressed := point_inside_rect(input.cursor_pos, float_rect)
 					if !file_pressed && !edit_pressed && !float_pressed {
 						top_bar_open_menu = .None
 					}
