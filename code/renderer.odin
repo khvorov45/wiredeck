@@ -138,7 +138,9 @@ draw_text_px :: proc(
 ) {
 	cur_topleft := topleft
 	for ch in str {
-		draw_glyph_px(renderer, font, ch, cur_topleft, color)
+		if ch != ' ' {
+			draw_glyph_px(renderer, font, ch, cur_topleft, color)
+		}
 		cur_topleft.x += font.px_width
 	}
 }
