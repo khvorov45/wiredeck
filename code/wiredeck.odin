@@ -1,5 +1,7 @@
 package wiredeck
 
+import "core:fmt"
+
 TopBarMenu :: enum {
 	None,
 	File,
@@ -82,6 +84,21 @@ main :: proc() {
 
 				begin_floating(&ui, .Bottom, 100, &ref)
 				float_rect = ui.container_stack[len(ui.container_stack) - 1]
+
+				ui.current_layout = .Vertical
+
+				#partial switch top_bar_open_menu {
+				case .File:
+					if button(&ui, "Open file", false, .Begin) == .Clicked {
+						fmt.println("open file")
+					}
+					if button(&ui, "Open folder", false, .Begin) == .Clicked {
+						fmt.println("open folder")
+					}
+
+				case .Edit:
+				}
+
 				end_floating(&ui)
 			}
 

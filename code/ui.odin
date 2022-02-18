@@ -69,6 +69,12 @@ UICommandText :: struct {
 	color: [4]f32,
 }
 
+Align :: enum {
+	Center,
+	Begin,
+	End,
+}
+
 init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 
 	theme: Theme
@@ -149,7 +155,7 @@ end_floating :: proc(ui: ^UI) {
 	pop(&ui.container_stack)
 }
 
-button :: proc(ui: ^UI, label_str: string, active: bool = false) -> MouseState {
+button :: proc(ui: ^UI, label_str: string, active: bool = false, text_align: Align = .Center) -> MouseState {
 	state := MouseState.Normal
 
 	pad := ui.theme.sizes[.ButtonPadding]
@@ -181,7 +187,12 @@ button :: proc(ui: ^UI, label_str: string, active: bool = false) -> MouseState {
 		state = _get_rect_mouse_state(ui.input, rect)
 
 		element_slack := rect.dim - element_dim
-		element_topleft := rect.topleft + element_slack / 2
+		element_topleft := rect.topleft
+		if text_align == .Center {
+			element_topleft += element_slack / 2
+		} else if text_align == .End {
+			element_topleft += element_slack
+		}
 
 		text_rect: Rect2i
 		text_rect.dim = [2]int{text_width, text_height}
