@@ -90,10 +90,21 @@ main :: proc() {
 				#partial switch top_bar_open_menu {
 				case .File:
 					if button(&ui, "Open file", false, .Begin) == .Clicked {
-						fmt.println("open file")
+						filepath := get_path_from_platform_file_dialog(.File)
+						if filepath == "" {
+							fmt.println("open file: dialog closed")
+						} else {
+							fmt.println("open file: ", filepath)
+						}
 					}
+
 					if button(&ui, "Open folder", false, .Begin) == .Clicked {
-						fmt.println("open folder")
+						dirpath := get_path_from_platform_file_dialog(.Folder)
+						if dirpath == "" {
+							fmt.println("open folder: dialog closed")
+						} else {
+							fmt.println("open folder: ", dirpath)
+						}
 					}
 
 				case .Edit:
