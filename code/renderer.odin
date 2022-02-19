@@ -1,8 +1,8 @@
 package wiredeck
 
 Renderer :: struct {
-	pixels:	    []u32,
-	pixels_dim:	[2]int,
+	pixels:     []u32,
+	pixels_dim: [2]int,
 }
 
 LineSegment2i :: struct {
@@ -39,11 +39,7 @@ draw_rect_px :: proc(renderer: ^Renderer, rect_init: Rect2i, color: [4]f32) {
 	}
 }
 
-draw_line_px :: proc(
-	renderer: ^Renderer,
-	line_init: LineSegment2i,
-	color: [4]f32,
-) {
+draw_line_px :: proc(renderer: ^Renderer, line_init: LineSegment2i, color: [4]f32) {
 	line := clip_line_to_rect(line_init, Rect2i{{0, 0}, renderer.pixels_dim})
 
 	delta := line.end - line.start
@@ -60,7 +56,7 @@ draw_line_px :: proc(
 		old_col := renderer.pixels[px_index]
 		new_col32 := color_blend(old_col, color)
 		renderer.pixels[px_index] = new_col32
-		
+
 		cur += inc
 	}
 }
@@ -73,12 +69,14 @@ draw_alpha_tex_rect_px :: proc(
 	tex_pitch: int,
 	topleft: [2]int,
 	color: [4]f32,
+	clip_rect: Rect2i,
 ) {
 	px_rect: Rect2i
 	px_rect.topleft = topleft
 	px_rect.dim = tex_dim
 
 	px_rect_clipped := clip_rect_to_rect(px_rect, Rect2i{{0, 0}, renderer.pixels_dim})
+	px_rect_clipped = clip_rect_to_rect(px_rect_clipped, clip_rect)
 
 	if is_valid_draw_rect(px_rect_clipped, renderer.pixels_dim) {
 
@@ -115,17 +113,19 @@ draw_glyph_px :: proc(
 	glyph: rune,
 	topleft: [2]int,
 	color: [4]f32,
+	clip_rect: Rect2i,
 ) {
 	tex_coords, offset := get_glyph_tex_coords_and_offset(font, glyph)
 	topleft_offset := topleft + offset
 	draw_alpha_tex_rect_px(
-		renderer, 
+		renderer,
 		tex_coords.topleft,
 		tex_coords.dim,
 		font.alphamap,
 		font.alphamap_dim.x,
 		topleft_offset,
 		color,
+		clip_rect,
 	)
 }
 
@@ -133,15 +133,20 @@ draw_text_px :: proc(
 	renderer: ^Renderer,
 	font: ^Font,
 	str: string,
-	topleft: [2]int,
+	text_topleft: [2]int,
+	clip_rect: Rect2i,
 	color: [4]f32,
 ) {
-	cur_topleft := topleft
+	cur_topleft := text_topleft
+	rect_bottomright := clip_rect.topleft + clip_rect.dim
 	for ch in str {
 		if ch != ' ' {
-			draw_glyph_px(renderer, font, ch, cur_topleft, color)
+			draw_glyph_px(renderer, font, ch, cur_topleft, color, clip_rect)
 		}
 		cur_topleft.x += font.px_width
+		if cur_topleft.x > rect_bottomright.x {
+			break
+		}
 	}
 }
 
@@ -223,8 +228,7 @@ clip_line_to_rect :: proc(line: LineSegment2i, bounds: Rect2i) -> LineSegment2i 
 	result: LineSegment2i
 
 	// NOTE(khvorov) Line parallel to clipping window
-	if (p1 == 0 && q1 < 0) || (p2 == 0 && q2 < 0) || (p3 == 0 && q3 < 0) || (p4 == 0 && q4 <
-	   0) {
+	if (p1 == 0 && q1 < 0) || (p2 == 0 && q2 < 0) || (p3 == 0 && q3 < 0) || (p4 == 0 && q4 < 0) {
 		return result
 	}
 
@@ -281,9 +285,10 @@ clip_line_to_rect :: proc(line: LineSegment2i, bounds: Rect2i) -> LineSegment2i 
 
 is_valid_draw_rect :: proc(rect: Rect2i, px_dim: [2]int) -> bool {
 	rect_bottomright := rect.topleft + rect.dim
-	result := rect.dim.x > 0 && rect.dim.y > 0 && 
-		rect.topleft.x >= 0 && rect.topleft.y >= 0 && 
-		rect_bottomright.x <= px_dim.x && rect_bottomright.y <= px_dim.y
+	nonzero := rect.dim.x > 0 && rect.dim.y > 0
+	topleft_in := rect.topleft.x >= 0 && rect.topleft.y >= 0
+	bottomright_in := rect_bottomright.x <= px_dim.x && rect_bottomright.y <= px_dim.y
+	result := nonzero && topleft_in && bottomright_in
 	return result
 }
 

@@ -3,14 +3,17 @@ package wiredeck
 import "core:mem"
 
 UI :: struct {
-	input:             ^Input,
-	font:              ^Font,
-	theme:             Theme,
-	total_dim:         [2]int,
-	current_layout:    Layout,
-	container_stack:   [dynamic]Rect2i,
-	commands:          [dynamic]UICommand,
-	last_element_rect: Rect2i,
+	input:              ^Input,
+	font:               ^Font,
+	theme:              Theme,
+	total_dim:          [2]int,
+	current_layout:     Layout,
+	container_stack:    [dynamic]Rect2i,
+	commands:           [dynamic]UICommand,
+	last_element_rect:  Rect2i,
+	floating:           Maybe(Rect2i),
+	floating_cmd:       [dynamic]UICommand,
+	current_cmd_buffer: ^[dynamic]UICommand,
 }
 
 Theme :: struct {
@@ -64,9 +67,10 @@ UICommandRect :: struct {
 }
 
 UICommandText :: struct {
-	str:   string,
-	rect:  Rect2i,
-	color: [4]f32,
+	str:          string,
+	text_topleft: [2]int,
+	clip_rect:    Rect2i,
+	color:        [4]f32,
 }
 
 Align :: enum {
@@ -95,6 +99,9 @@ init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 		container_stack = make([dynamic]Rect2i, 0, 10),
 		commands = make([dynamic]UICommand, 0, 50),
 		last_element_rect = Rect2i{},
+		floating = nil,
+		floating_cmd = make([dynamic]UICommand, 0, 50),
+		current_cmd_buffer = nil,
 	}
 }
 
@@ -104,9 +111,16 @@ ui_begin :: proc(ui: ^UI) {
 	root_rect := Rect2i{{0, 0}, ui.total_dim}
 	append(&ui.container_stack, root_rect)
 	ui.last_element_rect = Rect2i{}
+	ui.floating = nil
+	clear(&ui.floating_cmd)
+	ui.current_cmd_buffer = &ui.commands
 }
 
-ui_end :: proc(ui: ^UI) {}
+ui_end :: proc(ui: ^UI) {
+	for cmd in ui.floating_cmd {
+		append(&ui.commands, cmd)
+	}
+}
 
 begin_container :: proc(ui: ^UI, dir: Direction, size_init: int) -> bool {
 	result := false
@@ -121,41 +135,58 @@ end_container :: proc(ui: ^UI) {
 	pop(&ui.container_stack)
 }
 
-begin_floating :: proc(ui: ^UI, dir: Direction, dim: [2]int, ref: ^Rect2i = nil) {
+begin_floating :: proc(ui: ^UI, dir: Direction, dim: [2]int, ref: ^Rect2i = nil) -> bool {
 	result := false
-	rect: Rect2i
+	if ui.floating == nil {
+		ui.current_cmd_buffer = &ui.floating_cmd
 
-	if ref == nil {
-		ref^ = ui.last_element_rect
+		rect: Rect2i
+
+		if ref == nil {
+			ref^ = ui.last_element_rect
+		}
+		ref_bottomright := ref.topleft + ref.dim
+
+		rect.dim = dim
+
+		switch dir {
+		case .Bottom:
+			rect.topleft.x = ref.topleft.x
+			rect.topleft.y = ref_bottomright.y
+		case .Top:
+			rect.topleft.x = ref.topleft.x
+			rect.topleft.y = ref.topleft.y - dim.y
+		case .Left:
+			rect.topleft.x = ref.topleft.x - dim.x
+			rect.topleft.y = ref.topleft.y
+		case .Right:
+			rect.topleft.x = ref_bottomright.x + dim.x
+			rect.topleft.y = ref.topleft.y
+		}
+
+		append(&ui.container_stack, rect)
+
+		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Background]})
+		_cmd_outline(ui, rect, ui.theme.colors[.Border])
+
+		ui.floating = rect
+		result = true
 	}
-	ref_bottomright := ref.topleft + ref.dim
-
-	rect.dim = dim
-
-	switch dir {
-	case .Bottom:
-		rect.topleft.x = ref.topleft.x
-		rect.topleft.y = ref_bottomright.y
-	case .Top:
-		rect.topleft.x = ref.topleft.x
-		rect.topleft.y = ref.topleft.y - dim.y
-	case .Left:
-		rect.topleft.x = ref.topleft.x - dim.x
-		rect.topleft.y = ref.topleft.y
-	case .Right:
-		rect.topleft.x = ref_bottomright.x + dim.x
-		rect.topleft.y = ref.topleft.y
-	}
-
-	append(&ui.container_stack, rect)
-	_cmd_outline(ui, rect, ui.theme.colors[.Border])
+	return result
 }
 
 end_floating :: proc(ui: ^UI) {
 	pop(&ui.container_stack)
+	ui.current_cmd_buffer = &ui.commands
 }
 
-button :: proc(ui: ^UI, label_str: string, active: bool = false, text_align: Align = .Center) -> MouseState {
+button :: proc(
+	ui: ^UI,
+	label_str: string,
+	active: bool = false,
+	text_align: Align = .Center,
+	process_input: bool = true,
+) -> MouseState {
 	state := MouseState.Normal
 
 	pad := ui.theme.sizes[.ButtonPadding]
@@ -184,7 +215,9 @@ button :: proc(ui: ^UI, label_str: string, active: bool = false, text_align: Ali
 
 	if rect, ok := _take_rect(&ui.container_stack[len(ui.container_stack) - 1], dir, size); ok {
 		ui.last_element_rect = rect
-		state = _get_rect_mouse_state(ui.input, rect)
+		if process_input {
+			state = _get_rect_mouse_state(ui.input, rect)
+		}
 
 		element_slack := rect.dim - element_dim
 		element_topleft := rect.topleft
@@ -194,17 +227,18 @@ button :: proc(ui: ^UI, label_str: string, active: bool = false, text_align: Ali
 			element_topleft += element_slack
 		}
 
-		text_rect: Rect2i
-		text_rect.dim = [2]int{text_width, text_height}
-		text_rect.topleft = element_topleft
-		text_rect.topleft.x += padding_x[0]
-		text_rect.topleft.y += padding_y[0]
+		text_topleft := element_topleft
+		text_topleft.x += padding_x[0]
+		text_topleft.y += padding_y[0]
 
 		if state >= .Hovered || active {
-			append(&ui.commands, UICommandRect{rect, ui.theme.colors[.Hovered]})
+			append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Hovered]})
 		}
 
-		append(&ui.commands, UICommandText{label_str, text_rect, ui.theme.colors[.Text]})
+		append(
+			ui.current_cmd_buffer,
+			UICommandText{label_str, text_topleft, rect, ui.theme.colors[.Text]},
+		)
 	}
 
 	return state
@@ -294,8 +328,8 @@ _cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32) {
 	right := left
 	right.topleft.x += rect.dim.x - 1
 
-	append(&ui.commands, UICommandRect{top, color})
-	append(&ui.commands, UICommandRect{bottom, color})
-	append(&ui.commands, UICommandRect{left, color})
-	append(&ui.commands, UICommandRect{right, color})
+	append(ui.current_cmd_buffer, UICommandRect{top, color})
+	append(ui.current_cmd_buffer, UICommandRect{bottom, color})
+	append(ui.current_cmd_buffer, UICommandRect{left, color})
+	append(ui.current_cmd_buffer, UICommandRect{right, color})
 }
