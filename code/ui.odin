@@ -1,6 +1,6 @@
 package wiredeck
 
-import "core:mem"
+import "core:strings"
 
 UI :: struct {
 	input:              ^Input,
@@ -58,7 +58,7 @@ MouseState :: enum {
 
 UICommand :: union {
 	UICommandRect,
-	UICommandText,
+	UICommandTextline,
 }
 
 UICommandRect :: struct {
@@ -66,7 +66,7 @@ UICommandRect :: struct {
 	color: [4]f32,
 }
 
-UICommandText :: struct {
+UICommandTextline :: struct {
 	str:          string,
 	text_topleft: [2]int,
 	clip_rect:    Rect2i,
@@ -228,11 +228,43 @@ button :: proc(
 
 		append(
 			ui.current_cmd_buffer,
-			UICommandText{label_str, text_topleft, rect, ui.theme.colors[.Text]},
+			UICommandTextline{label_str, text_topleft, rect, ui.theme.colors[.Text]},
 		)
 	}
 
 	return state
+}
+
+text_area_string :: proc(ui: ^UI, str: string) {
+	rect := _take_entire_rect(&ui.container_stack[len(ui.container_stack) - 1])
+
+	ch_per_newline := 1
+	if strings.index(str, "\r\n") != -1 {
+		ch_per_newline = 2
+	}
+
+	str_left := str
+	current_line_topleft := rect.topleft
+	for len(str_left) > 0 {
+
+		line_end_index := strings.index_any(str_left, "\r\n")
+		if line_end_index == -1 {
+			line_end_index = len(str_left)
+		}
+
+		line := str_left[:line_end_index]
+		str_left = str_left[line_end_index:]
+
+		append(ui.current_cmd_buffer, UICommandTextline{line, current_line_topleft, rect, ui.theme.colors[.Text]})
+
+		skip_count := 0
+		for len(str_left) > 0 && (str_left[0] == '\n' || str_left[0] == '\r') {
+			skip_count += 1
+			str_left = str_left[1:]
+		}
+
+		current_line_topleft.y += skip_count / ch_per_newline * get_string_height(ui.font, line)
+	}
 }
 
 get_button_pad :: proc(ui: ^UI) -> [2][2]int {
@@ -309,6 +341,13 @@ _take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect
 	}
 
 	return rect, success
+}
+
+_take_entire_rect :: proc(from: ^Rect2i) -> Rect2i {
+	result := from^
+	from.topleft += from.dim
+	from.dim = 0
+	return result
 }
 
 _get_rect_mouse_state :: proc(input: ^Input, rect: Rect2i) -> MouseState {

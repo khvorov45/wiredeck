@@ -140,10 +140,13 @@ draw_text_px :: proc(
 	cur_topleft := text_topleft
 	rect_bottomright := clip_rect.topleft + clip_rect.dim
 	for ch in str {
-		if ch != ' ' {
+		if ch != ' ' && ch != '\t' {
 			draw_glyph_px(renderer, font, ch, cur_topleft, color, clip_rect)
 		}
 		cur_topleft.x += font.px_width
+		if ch == '\t' {
+			cur_topleft.x += 3 * font.px_width
+		}
 		if cur_topleft.x > rect_bottomright.x {
 			break
 		}

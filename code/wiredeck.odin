@@ -4,16 +4,17 @@ import "core:fmt"
 import "core:strings"
 import "core:os"
 
-TopBarMenu :: enum {
-	None,
-	File,
-	Edit,
-}
-
 State :: struct {
 	top_bar_open_menu:     TopBarMenu,
 	top_bar_pending_close: bool,
 	opened_files:          [dynamic]OpenedFile,
+	editing:               Maybe(int),
+}
+
+TopBarMenu :: enum {
+	None,
+	File,
+	Edit,
 }
 
 OpenedFile :: struct {
@@ -160,11 +161,20 @@ main :: proc() {
 		if begin_container(&ui, .Left, 153) {
 			ui.current_layout = .Vertical
 
-			for opened_file in state.opened_files {
-				button(&ui, opened_file.path, false, .Begin, state.top_bar_open_menu == .None)
+			for opened_file, index in state.opened_files {
+				if button(&ui, opened_file.path, false, .Begin, state.top_bar_open_menu == .None) == .Clicked {
+					state.editing = index
+				}
 			}
 
 			end_container(&ui)
+		}
+
+		// NOTE(khvorov) Editors
+		if editing, ok := state.editing.(int); ok {
+
+			file_content := state.opened_files[editing].content
+			text_area_string(&ui, file_content)
 		}
 
 		ui_end(&ui)
@@ -179,7 +189,7 @@ main :: proc() {
 			switch cmd in cmd_ui {
 			case UICommandRect:
 				draw_rect_px(&renderer, cmd.rect, cmd.color)
-			case UICommandText:
+			case UICommandTextline:
 				draw_text_px(&renderer, &font, cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.color)
 			}
 		}
