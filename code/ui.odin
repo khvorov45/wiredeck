@@ -1,19 +1,23 @@
 package wiredeck
 
 import "core:strings"
+import "core:fmt"
+import "core:mem"
 
 UI :: struct {
 	input:              ^Input,
 	font:               ^Font,
 	theme:              Theme,
 	total_dim:          [2]int,
-	current_layout:     Layout,
+	current_layout:     Orientation,
 	container_stack:    [dynamic]Rect2i,
 	commands:           [dynamic]UICommand,
 	last_element_rect:  Rect2i,
 	floating:           Maybe(Rect2i),
 	floating_cmd:       [dynamic]UICommand,
 	current_cmd_buffer: ^[dynamic]UICommand,
+	arena:              mem.Arena,
+	arena_allocator:    mem.Allocator,
 }
 
 Theme :: struct {
@@ -25,11 +29,14 @@ ColorID :: enum {
 	Background,
 	Hovered,
 	Text,
+	LineNumber,
 	Border,
 }
 
 SizeID :: enum {
 	ButtonPadding,
+	Separator,
+	TextAreaGutter,
 }
 
 Rect2i :: struct {
@@ -44,7 +51,7 @@ Direction :: enum {
 	Left,
 }
 
-Layout :: enum {
+Orientation :: enum {
 	Horizontal,
 	Vertical,
 }
@@ -87,8 +94,11 @@ init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 	theme.colors[.Hovered] = [4]f32{0.2, 0.2, 0.2, 1}
 	theme.colors[.Text] = [4]f32{0.9, 0.9, 0.9, 1}
 	theme.colors[.Border] = [4]f32{0.3, 0.3, 0.3, 1}
+	theme.colors[.LineNumber] = [4]f32{0.7, 0.7, 0.7, 1}
 
 	theme.sizes[.ButtonPadding] = 5
+	theme.sizes[.Separator] = 5
+	theme.sizes[.TextAreaGutter] = 5
 
 	ui^ = UI {
 		input = input,
@@ -103,6 +113,9 @@ init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 		floating_cmd = make([dynamic]UICommand, 0, 50),
 		current_cmd_buffer = nil,
 	}
+
+	mem.init_arena(&ui.arena, make([]u8, mem.megabytes(4)))
+	ui.arena_allocator = mem.arena_allocator(&ui.arena)
 }
 
 ui_begin :: proc(ui: ^UI) {
@@ -120,11 +133,12 @@ ui_end :: proc(ui: ^UI) {
 	for cmd in ui.floating_cmd {
 		append(&ui.commands, cmd)
 	}
+	free_all(ui.arena_allocator)
 }
 
 begin_container :: proc(ui: ^UI, dir: Direction, size_init: int) -> bool {
 	result := false
-	if rect, ok := _take_rect(&ui.container_stack[len(ui.container_stack) - 1], dir, size_init); ok {
+	if rect, ok := _take_rect(last_container(ui), dir, size_init); ok {
 		append(&ui.container_stack, rect)
 		result = true
 	}
@@ -204,7 +218,7 @@ button :: proc(
 		dir = .Top
 	}
 
-	if rect, ok := _take_rect(&ui.container_stack[len(ui.container_stack) - 1], dir, size); ok {
+	if rect, ok := _take_rect(last_container(ui), dir, size); ok {
 		ui.last_element_rect = rect
 		if process_input {
 			state = _get_rect_mouse_state(ui.input, rect)
@@ -236,17 +250,34 @@ button :: proc(
 }
 
 text_area_string :: proc(ui: ^UI, str: string) {
-	rect := _take_entire_rect(&ui.container_stack[len(ui.container_stack) - 1])
 
+	// NOTE(khvorov) Count lines
 	ch_per_newline := 1
 	if strings.index(str, "\r\n") != -1 {
 		ch_per_newline = 2
 	}
 
+	line_count := 0
+	for ch in str {
+		if ch == '\n' || ch == '\r' {
+			line_count += 1
+		}
+	}
+	line_count = line_count / ch_per_newline + 1
+
+	line_count_str := fmt.tprintf("%d", line_count)
+	num_rect_dim := [2]int{get_string_width(ui.font, line_count_str), get_string_height(ui.font, "")}
+
+	rect := _take_entire_rect(last_container(ui))
+
 	str_left := str
-	current_line_topleft := rect.topleft
+	current_topleft_y := rect.topleft.y
+	current_topleft_x_num := rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
+	current_topleft_x_line := current_topleft_x_num + num_rect_dim.x + ui.theme.sizes[.TextAreaGutter]
+	current_line_number := 1
 	for len(str_left) > 0 {
 
+		// NOTE(khvorov) Line content
 		line_end_index := strings.index_any(str_left, "\r\n")
 		if line_end_index == -1 {
 			line_end_index = len(str_left)
@@ -255,7 +286,11 @@ text_area_string :: proc(ui: ^UI, str: string) {
 		line := str_left[:line_end_index]
 		str_left = str_left[line_end_index:]
 
-		append(ui.current_cmd_buffer, UICommandTextline{line, current_line_topleft, rect, ui.theme.colors[.Text]})
+		current_line_topleft := [2]int{current_topleft_x_line, current_topleft_y}
+		append(
+			ui.current_cmd_buffer,
+			UICommandTextline{line, current_line_topleft, rect, ui.theme.colors[.Text]},
+		)
 
 		skip_count := 0
 		for len(str_left) > 0 && (str_left[0] == '\n' || str_left[0] == '\r') {
@@ -263,7 +298,39 @@ text_area_string :: proc(ui: ^UI, str: string) {
 			str_left = str_left[1:]
 		}
 
-		current_line_topleft.y += skip_count / ch_per_newline * get_string_height(ui.font, line)
+		// NOTE(khvorov) Line number
+		line_count := max(skip_count, ch_per_newline) / ch_per_newline
+		for line_index in 0 ..< line_count {
+			num_string: string
+			{
+				context.allocator = ui.arena_allocator
+				num_string = fmt.aprintf("%d", current_line_number)
+			}
+			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
+			num_rect := Rect2i{current_num_topleft, num_rect_dim}
+			append(
+				ui.current_cmd_buffer,
+				UICommandTextline{num_string, current_num_topleft, num_rect, ui.theme.colors[.LineNumber]},
+			)
+			current_line_number += 1
+			current_topleft_y += get_string_height(ui.font, line)
+		}
+	}
+}
+
+separator :: proc(ui: ^UI, orientation: Orientation) {
+	size := ui.theme.sizes[.Separator]
+
+	dir: Direction
+	switch orientation {
+	case .Horizontal:
+		dir = .Top
+	case .Vertical:
+		dir = .Left
+	}
+
+	if rect, ok := _take_rect(last_container(ui), dir, size); ok {
+		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Border]})
 	}
 }
 
@@ -291,6 +358,11 @@ point_inside_rect :: proc(point: [2]int, rect: Rect2i) -> bool {
 	x_overlaps := point.x >= rect.topleft.x && point.x < rect_bottomright.x
 	y_overlaps := point.y >= rect.topleft.y && point.y < rect_bottomright.y
 	result := x_overlaps && y_overlaps
+	return result
+}
+
+last_container :: proc(ui: ^UI) -> ^Rect2i {
+	result := &ui.container_stack[len(ui.container_stack) - 1]
 	return result
 }
 

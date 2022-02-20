@@ -108,7 +108,7 @@ main :: proc() {
 
 				float_height := get_button_dim(&ui).y * item_count
 				if begin_floating(&ui, .Bottom, [2]int{100, float_height}, &ref) {
-					float_rect = ui.container_stack[len(ui.container_stack) - 1]
+					float_rect = last_container(&ui)^
 
 					ui.current_layout = .Vertical
 
@@ -169,6 +169,8 @@ main :: proc() {
 
 			end_container(&ui)
 		}
+
+		separator(&ui, .Vertical)
 
 		// NOTE(khvorov) Editors
 		if editing, ok := state.editing.(int); ok {
