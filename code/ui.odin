@@ -187,20 +187,11 @@ button :: proc(
 	text_align: Align = .Center,
 	process_input: bool = true,
 ) -> MouseState {
+
 	state := MouseState.Normal
 
-	pad := ui.theme.sizes[.ButtonPadding]
-
-	padding_x := [2]int{pad, pad}
-	padding_y := [2]int{0, pad}
-
-	text_width := get_string_width(ui.font, label_str)
-	text_height := get_string_height(ui.font, label_str)
-
-	element_dim := [2]int{
-		text_width + padding_x[0] + padding_x[1],
-		text_height + padding_y[0] + padding_y[1],
-	}
+	padding := get_button_pad(ui)
+	element_dim := get_button_dim(ui, label_str)
 
 	dir: Direction
 	size: int
@@ -228,8 +219,8 @@ button :: proc(
 		}
 
 		text_topleft := element_topleft
-		text_topleft.x += padding_x[0]
-		text_topleft.y += padding_y[0]
+		text_topleft.x += padding.x[0]
+		text_topleft.y += padding.y[0]
 
 		if state >= .Hovered || active {
 			append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Hovered]})
@@ -242,6 +233,25 @@ button :: proc(
 	}
 
 	return state
+}
+
+get_button_pad :: proc(ui: ^UI) -> [2][2]int {
+	pad := ui.theme.sizes[.ButtonPadding]
+	padding: [2][2]int
+	padding.x = [2]int{pad, pad}
+	padding.y = [2]int{0, pad}
+	return padding
+}
+
+get_button_dim :: proc(ui: ^UI, label: string = "") -> [2]int {
+	text_width := get_string_width(ui.font, label)
+	text_height := get_string_height(ui.font, label)
+	padding := get_button_pad(ui)
+	result := [2]int{
+		text_width + padding.x[0] + padding.x[1],
+		text_height + padding.y[0] + padding.y[1],
+	}
+	return result
 }
 
 point_inside_rect :: proc(point: [2]int, rect: Rect2i) -> bool {

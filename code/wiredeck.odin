@@ -62,7 +62,7 @@ main :: proc() {
 		ui_begin(&ui)
 
 		// NOTE(khvorov) Top bar
-		if begin_container(&ui, .Top, font.px_height + ui.theme.sizes[.ButtonPadding]) {
+		if begin_container(&ui, .Top, get_button_dim(&ui).y) {
 			if !window.is_focused {
 				state.top_bar_open_menu = .None
 			}
@@ -95,14 +95,18 @@ main :: proc() {
 			float_rect: Rect2i
 			if state.top_bar_open_menu != .None {
 				ref: Rect2i
+				item_count: int
 				#partial switch state.top_bar_open_menu {
 				case .File:
 					ref = file_button_rect
+					item_count = 2
 				case .Edit:
 					ref = edit_button_rect
+					item_count = 3
 				}
 
-				if begin_floating(&ui, .Bottom, 100, &ref) {
+				float_height := get_button_dim(&ui).y * item_count
+				if begin_floating(&ui, .Bottom, [2]int{100, float_height}, &ref) {
 					float_rect = ui.container_stack[len(ui.container_stack) - 1]
 
 					ui.current_layout = .Vertical
@@ -147,7 +151,7 @@ main :: proc() {
 		}
 
 		// NOTE(khvorov) Bottom bar
-		if begin_container(&ui, .Bottom, font.px_height + ui.theme.sizes[.ButtonPadding]) {
+		if begin_container(&ui, .Bottom, get_button_dim(&ui).y) {
 			ui.current_layout = .Horizontal
 			end_container(&ui)
 		}
