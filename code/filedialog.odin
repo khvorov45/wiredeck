@@ -3,7 +3,11 @@ package wiredeck
 import "core:strings"
 import "core:c"
 
-foreign import tinyfd {"../build/tinyfiledialog.lib", "system:User32.lib", "system:Comdlg32.lib", "system:Ole32.lib", "system:Shell32.lib"}
+when ODIN_OS == .Windows {
+	foreign import tinyfd {"../build/tinyfiledialog.lib", "system:User32.lib", "system:Comdlg32.lib", "system:Ole32.lib", "system:Shell32.lib"}
+} else {
+	foreign import tinyfd "../build/tinyfiledialog.a"
+}
 
 foreign tinyfd {
 	tinyfd_openFileDialog :: proc(

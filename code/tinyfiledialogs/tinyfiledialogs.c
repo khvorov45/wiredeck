@@ -79,6 +79,7 @@ Thanks for contributions, bug corrections & thorough testing to:
  #include <direct.h>
  #define TINYFD_NOCCSUNICODE
  #define SLASH "\\"
+ #define GETCWD _getcwd
 #else
  #include <limits.h>
  #include <unistd.h>
@@ -87,6 +88,7 @@ Thanks for contributions, bug corrections & thorough testing to:
  #include <sys/utsname.h>
  #include <signal.h> /* on old systems try <sys/signal.h> instead */
  #define SLASH "/"
+ #define GETCWD getcwd
 #endif /* _WIN32 */
 
 #include "tinyfiledialogs.h"
@@ -190,7 +192,7 @@ static int getenvDISPLAY(void)
 static char * getCurDir(void)
 {
 	static char lCurDir[MAX_PATH_OR_CMD];
-	return _getcwd(lCurDir, sizeof(lCurDir));
+	return GETCWD(lCurDir, sizeof(lCurDir));
 }
 
 
