@@ -42,7 +42,10 @@ get_path_from_platform_file_dialog :: proc(path_kind: PathKind) -> string {
 
 	if outpath != nil {
 		result = strings.clone_from_cstring(outpath, context.temp_allocator)
-		tinyfd_free(outpath)
+		// NOTE(khvorov) In case of folder, the pointer is a static array
+		if path_kind == .File {
+			tinyfd_free(outpath)
+		}
 	}
 
 	return result
