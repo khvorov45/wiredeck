@@ -8,7 +8,12 @@ State :: struct {
 	top_bar_open_menu:     TopBarMenu,
 	top_bar_pending_close: bool,
 	opened_files:          [dynamic]OpenedFile,
-	editing:               Maybe(int),
+	editing:               Maybe(Editing),
+}
+
+Editing :: struct {
+	index:       int,
+	line_offset: int,
 }
 
 TopBarMenu :: enum {
@@ -40,6 +45,8 @@ main :: proc() {
 	init_ui(&ui, window.dim.x, window.dim.y, &input, &font)
 
 	state: State
+	open_file(&state, "build.bat")
+	state.editing = Editing{0, 0}
 
 	for window.is_running {
 
@@ -48,6 +55,7 @@ main :: proc() {
 		//
 
 		clear_half_transitions(&input)
+		input.scroll = 0
 
 		if state.top_bar_pending_close {
 			state.top_bar_pending_close = false
@@ -163,7 +171,7 @@ main :: proc() {
 
 			for opened_file, index in state.opened_files {
 				if button(&ui, opened_file.path, false, .Begin, state.top_bar_open_menu == .None) == .Clicked {
-					state.editing = index
+					state.editing = Editing{index, 0}
 				}
 			}
 
@@ -173,10 +181,11 @@ main :: proc() {
 		separator(&ui, .Vertical)
 
 		// NOTE(khvorov) Editors
-		if editing, ok := state.editing.(int); ok {
+		if editing, ok := &state.editing.(Editing); ok {
 
-			file_content := state.opened_files[editing].content
-			text_area_string(&ui, file_content)
+			file_content := state.opened_files[editing.index].content
+			editing.line_offset += input.scroll.y
+			text_area_string(&ui, file_content, &editing.line_offset)
 		}
 
 		ui_end(&ui)

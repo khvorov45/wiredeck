@@ -249,7 +249,7 @@ button :: proc(
 	return state
 }
 
-text_area_string :: proc(ui: ^UI, str: string) {
+text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int = nil) {
 
 	// NOTE(khvorov) Count lines
 	ch_per_newline := 1
@@ -257,25 +257,45 @@ text_area_string :: proc(ui: ^UI, str: string) {
 		ch_per_newline = 2
 	}
 
+	if line_offset_init != nil {
+		line_offset_init^ = max(0, line_offset_init^)
+	}
+
+	line_offset := 0 if line_offset_init == nil else line_offset_init^
+	byte_offset := 0
+	last_line_byte_offset := 0
 	line_count := 0
-	for ch in str {
+	for index in 0..<len(str) {
+		ch := str[index]
 		if ch == '\n' || ch == '\r' {
 			line_count += 1
+			if line_count == line_offset {
+				byte_offset = index + 1
+			}
+			last_line_byte_offset = index + 1
 		}
 	}
 	line_count = line_count / ch_per_newline + 1
+
+	if line_offset > line_count - 1 {
+		line_offset = line_count - 1
+		byte_offset = last_line_byte_offset
+		if line_offset_init != nil {
+			line_offset_init^ = line_offset
+		}		
+	}
 
 	line_count_str := fmt.tprintf("%d", line_count)
 	num_rect_dim := [2]int{get_string_width(ui.font, line_count_str), get_string_height(ui.font, "")}
 
 	rect := _take_entire_rect(last_container(ui))
 
-	str_left := str
+	str_left := str[clamp(byte_offset, 0, len(str)):]
 	current_topleft_y := rect.topleft.y
 	current_topleft_x_num := rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
 	current_topleft_x_line := current_topleft_x_num + num_rect_dim.x + ui.theme.sizes[.TextAreaGutter]
-	current_line_number := 1
-	for len(str_left) > 0 {
+	current_line_number := 1 + line_offset
+	for {
 
 		// NOTE(khvorov) Line content
 		line_end_index := strings.index_any(str_left, "\r\n")
@@ -307,13 +327,16 @@ text_area_string :: proc(ui: ^UI, str: string) {
 				num_string = fmt.aprintf("%d", current_line_number)
 			}
 			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
-			num_rect := Rect2i{current_num_topleft, num_rect_dim}
 			append(
 				ui.current_cmd_buffer,
-				UICommandTextline{num_string, current_num_topleft, num_rect, ui.theme.colors[.LineNumber]},
+				UICommandTextline{num_string, current_num_topleft, rect, ui.theme.colors[.LineNumber]},
 			)
 			current_line_number += 1
 			current_topleft_y += get_string_height(ui.font, line)
+		}
+
+		if skip_count == 0 {
+			break
 		}
 	}
 }

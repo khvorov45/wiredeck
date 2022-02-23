@@ -1,8 +1,9 @@
 package wiredeck
 
 Input :: struct {
-	keys:         [KeyID]Key,
-	cursor_pos:   [2]int,
+	keys:       [KeyID]Key,
+	cursor_pos: [2]int,
+	scroll:     [2]int,
 }
 
 //odinfmt: disable
@@ -33,28 +34,28 @@ clear_half_transitions :: proc(input: ^Input) {
 }
 
 was_pressed :: proc(input: ^Input, key_id: KeyID) -> bool {
-	key := input.keys[key_id] 
-	result := false 
+	key := input.keys[key_id]
+	result := false
 	if key.half_transition_count >= 2 {
 		result = true
 	} else if key.half_transition_count == 1 {
 		result = key.ended_down
-	} 
+	}
 	return result
 }
 
 was_unpressed :: proc(input: ^Input, key_id: KeyID) -> bool {
-	key := input.keys[key_id] 
-	result := false 
+	key := input.keys[key_id]
+	result := false
 	if key.half_transition_count >= 2 {
 		result = true
 	} else if key.half_transition_count == 1 {
 		result = !key.ended_down
-	} 
+	}
 	return result
 }
 
 record_key :: proc(input: ^Input, key_id: KeyID, ended_down: bool) {
-	input.keys[key_id].ended_down = ended_down 
+	input.keys[key_id].ended_down = ended_down
 	input.keys[key_id].half_transition_count += 1
 }

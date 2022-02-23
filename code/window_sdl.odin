@@ -161,6 +161,10 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 			record_key(input, .MouseRight, ended_down)
 		}
 
+	case .MOUSEWHEEL:
+		input.scroll.x = int(event.wheel.x)
+		input.scroll.y = int(-event.wheel.y)
+
 	case .MOUSEMOTION:
 		input.cursor_pos = [2]int{int(event.motion.x), int(event.motion.y)}
 	}
