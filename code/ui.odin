@@ -265,17 +265,18 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int = nil) {
 	byte_offset := 0
 	last_line_byte_offset := 0
 	line_count := 0
-	for index in 0..<len(str) {
+	for index := 0; index < len(str); index += 1 {
 		ch := str[index]
 		if ch == '\n' || ch == '\r' {
 			line_count += 1
 			if line_count == line_offset {
-				byte_offset = index + 1
+				byte_offset = index + ch_per_newline
 			}
-			last_line_byte_offset = index + 1
+			last_line_byte_offset = index + ch_per_newline
+			index += ch_per_newline - 1
 		}
 	}
-	line_count = line_count / ch_per_newline + 1
+	line_count += 1 // NOTE(khvorov) Start counting from 1
 
 	if line_offset > line_count - 1 {
 		line_offset = line_count - 1
