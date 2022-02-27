@@ -8,13 +8,7 @@ State :: struct {
 	top_bar_open_menu:     TopBarMenu,
 	top_bar_pending_close: bool,
 	opened_files:          [dynamic]OpenedFile,
-	editing:               Maybe(Editing),
-}
-
-Editing :: struct {
-	index:               int,
-	line_offset:         int,
-	cursor_y_scroll_ref: Maybe(f32),
+	editing:               Maybe(int),
 }
 
 TopBarMenu :: enum {
@@ -24,8 +18,10 @@ TopBarMenu :: enum {
 }
 
 OpenedFile :: struct {
-	path:    string,
-	content: string,
+	path:                string,
+	content:             string,
+	line_offset:         int,
+	cursor_y_scroll_ref: Maybe(f32),
 }
 
 main :: proc() {
@@ -48,7 +44,7 @@ main :: proc() {
 	state: State
 	open_file(&state, "build.bat")
 	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c")
-	state.editing = Editing{1, 0, nil}
+	state.editing = 0
 
 	for window.is_running {
 
@@ -174,7 +170,7 @@ main :: proc() {
 
 			for opened_file, index in state.opened_files {
 				if button(&ui, opened_file.path, false, .Begin, state.top_bar_open_menu == .None) == .Clicked {
-					state.editing = Editing{index, 0, nil}
+					state.editing = index
 				}
 			}
 
@@ -184,11 +180,11 @@ main :: proc() {
 		separator(&ui, .Vertical)
 
 		// NOTE(khvorov) Editors
-		if editing, ok := &state.editing.(Editing); ok {
+		if editing, ok := state.editing.(int); ok {
 
-			file_content := state.opened_files[editing.index].content
-			text_area_string(&ui, file_content, &editing.line_offset, &editing.cursor_y_scroll_ref)
-			if editing.cursor_y_scroll_ref != nil {
+			file := &state.opened_files[editing]
+			text_area_string(&ui, file.content, &file.line_offset, &file.cursor_y_scroll_ref)
+			if file.cursor_y_scroll_ref != nil {
 				set_mouse_capture(&window, true)
 			} else {
 				set_mouse_capture(&window, false)
