@@ -27,16 +27,22 @@ Theme :: struct {
 
 ColorID :: enum {
 	Background,
-	Hovered,
+	BackgroundHovered,
 	Text,
 	LineNumber,
 	Border,
+	ScrollbarTrack,
+	ScrollbarThumb,
+	ScrollbarThumbHovered,
 }
 
 SizeID :: enum {
 	ButtonPadding,
 	Separator,
 	TextAreaGutter,
+	ScrollbarWidth,
+	ScrollbarThumbLengthMin,
+	ScrollbarIncPerLine,
 }
 
 Rect2i :: struct {
@@ -91,14 +97,20 @@ init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 	theme: Theme
 
 	theme.colors[.Background] = [4]f32{0.1, 0.1, 0.1, 1}
-	theme.colors[.Hovered] = [4]f32{0.2, 0.2, 0.2, 1}
+	theme.colors[.BackgroundHovered] = [4]f32{0.2, 0.2, 0.2, 1}
 	theme.colors[.Text] = [4]f32{0.9, 0.9, 0.9, 1}
 	theme.colors[.Border] = [4]f32{0.3, 0.3, 0.3, 1}
 	theme.colors[.LineNumber] = [4]f32{0.7, 0.7, 0.7, 1}
+	theme.colors[.ScrollbarTrack] = [4]f32{0.2, 0.2, 0.2, 1}
+	theme.colors[.ScrollbarThumb] = [4]f32{0.5, 0.5, 0.5, 1}
+	theme.colors[.ScrollbarThumbHovered] = [4]f32{0.7, 0.7, 0.7, 1}
 
 	theme.sizes[.ButtonPadding] = 5
 	theme.sizes[.Separator] = 5
 	theme.sizes[.TextAreaGutter] = 5
+	theme.sizes[.ScrollbarWidth] = 10
+	theme.sizes[.ScrollbarThumbLengthMin] = 40
+	theme.sizes[.ScrollbarIncPerLine] = 20
 
 	ui^ = UI {
 		input = input,
@@ -237,7 +249,7 @@ button :: proc(
 		text_topleft.y += padding.y[0]
 
 		if state >= .Hovered || active {
-			append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Hovered]})
+			append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundHovered]})
 		}
 
 		append(
@@ -249,51 +261,122 @@ button :: proc(
 	return state
 }
 
-text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int = nil) {
+text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int, cursor_y_scroll_ref_init: ^Maybe(f32)) {
+
+	assert(line_offset_init != nil)
+	assert(cursor_y_scroll_ref_init != nil)
 
 	// NOTE(khvorov) Count lines
 	ch_per_newline := 1
 	if strings.index(str, "\r\n") != -1 {
 		ch_per_newline = 2
 	}
-
-	if line_offset_init != nil {
-		line_offset_init^ = max(0, line_offset_init^)
-	}
-
-	line_offset := 0 if line_offset_init == nil else line_offset_init^
-	byte_offset := 0
-	last_line_byte_offset := 0
 	line_count := 0
 	for index := 0; index < len(str); index += 1 {
 		ch := str[index]
 		if ch == '\n' || ch == '\r' {
 			line_count += 1
-			if line_count == line_offset {
-				byte_offset = index + ch_per_newline
-			}
-			last_line_byte_offset = index + ch_per_newline
 			index += ch_per_newline - 1
 		}
 	}
 	line_count += 1 // NOTE(khvorov) Start counting from 1
 
-	if line_offset > line_count - 1 {
-		line_offset = line_count - 1
-		byte_offset = last_line_byte_offset
-		if line_offset_init != nil {
-			line_offset_init^ = line_offset
-		}		
-	}
-
 	line_count_str := fmt.tprintf("%d", line_count)
 	num_rect_dim := [2]int{get_string_width(ui.font, line_count_str), get_string_height(ui.font, "")}
 
-	rect := _take_entire_rect(last_container(ui))
+	text_area_rect := _take_entire_rect(last_container(ui))
+	text_rect := text_area_rect
+	text_rect.dim -= ui.theme.sizes[.ScrollbarWidth]
+	text_rect_max_y := text_rect.topleft.y + text_rect.dim.y
 
+	scrollbar_v_rect := text_area_rect
+	scrollbar_v_rect.topleft.x += text_rect.dim.x
+	scrollbar_v_rect.dim.x = ui.theme.sizes[.ScrollbarWidth]
+	cursor_y_scroll_ref: Maybe(f32)
+	if cursor_y_scroll_ref_init^ != nil {
+		cursor_y_scroll_ref = clamp(
+			cursor_y_scroll_ref_init^.(f32), 
+			f32(scrollbar_v_rect.topleft.y),
+			f32(scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y),
+		)
+	}
+
+	scrollbar_h_rect := text_area_rect
+	scrollbar_h_rect.topleft.y += text_rect.dim.y
+	scrollbar_h_rect.dim.y = ui.theme.sizes[.ScrollbarWidth]
+
+	// NOTE(khvorov) Vertical Scrollbar
+	scrollbar_v_inc_per_line := f32(ui.theme.sizes[.ScrollbarIncPerLine])
+	scrollbar_v_range := (line_count - 1) * int(scrollbar_v_inc_per_line)
+	scrollbar_v_length := text_area_rect.dim.y - scrollbar_v_range
+	if scrollbar_v_length < ui.theme.sizes[.ScrollbarThumbLengthMin] {
+		scrollbar_v_length = ui.theme.sizes[.ScrollbarThumbLengthMin]
+		scrollbar_v_range = scrollbar_v_rect.dim.y - scrollbar_v_length
+		if line_count > 1 {
+			scrollbar_v_inc_per_line = f32(scrollbar_v_range) / f32(line_count - 1)
+		}
+	}
+	scrollbar_v_top_start := scrollbar_v_rect.topleft.y
+	scrollbar_v_top_end := scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y - scrollbar_v_length
+	scrollbar_v_top_pos := scrollbar_v_top_start
+
+	// NOTE(sen) Process line offset inputs
+	line_offset_delta := 0
+	if cursor_y_scroll_ref == nil {
+		line_offset_delta = ui.input.scroll.y
+	} else {
+		scroll_delta_px := f32(ui.input.cursor_pos.y) - cursor_y_scroll_ref.(f32)
+		line_offset_delta = int(scroll_delta_px / scrollbar_v_inc_per_line)
+	}
+	old_line_offset := clamp(line_offset_init^, 0, line_count - 1)
+	line_offset := clamp(old_line_offset + line_offset_delta, 0, line_count - 1)
+	line_offset_delta = line_offset - old_line_offset
+
+	// NOTE(sen) Figure out byte offset
+	byte_offset := 0
+	cur_line := 0
+	for index := 0; index < len(str); index += 1 {
+		ch := str[index]
+		if ch == '\n' || ch == '\r' {
+			cur_line += 1
+			if cur_line == line_offset {
+				byte_offset = index + ch_per_newline
+				break
+			}
+			index += ch_per_newline - 1
+		}
+	}
+
+	if line_count > 1 {
+		scrollbar_v_top_pos = int(f32(line_offset) / f32(line_count - 1) * f32(scrollbar_v_range) + f32(scrollbar_v_top_start))
+	}
+
+	// NOTE(sen) Position vertical scrollbar thumb
+	scrollbar_v_thumb_rect := scrollbar_v_rect
+	scrollbar_v_thumb_rect.topleft.y = scrollbar_v_top_pos
+	scrollbar_v_thumb_rect.dim.y = scrollbar_v_length
+	scrollbar_v_thumb_color := ui.theme.colors[.ScrollbarThumb]
+	scrollbar_v_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_v_thumb_rect)
+	if scrollbar_v_thumb_state > .Normal {
+		scrollbar_v_thumb_color = ui.theme.colors[.ScrollbarThumbHovered]
+	}
+	append(ui.current_cmd_buffer, UICommandRect{scrollbar_v_thumb_rect, scrollbar_v_thumb_color})
+
+	// NOTE(sen) Vertical scroll state input check
+	if scrollbar_v_thumb_state == .Pressed && cursor_y_scroll_ref == nil {
+		cursor_y_scroll_ref = f32(ui.input.cursor_pos.y)
+	} else if cursor_y_scroll_ref != nil {
+		if !ui.input.keys[.MouseLeft].ended_down {
+			cursor_y_scroll_ref = nil
+		} else {
+			cursor_y_scroll_ref = cursor_y_scroll_ref.(f32) + f32(line_offset_delta) * scrollbar_v_inc_per_line
+		}
+	}
+
+	// NOTE(khvorov) Text content
 	str_left := str[clamp(byte_offset, 0, len(str)):]
-	current_topleft_y := rect.topleft.y
-	current_topleft_x_num := rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
+	current_topleft_y := text_area_rect.topleft.y
+	current_topleft_x_num := text_area_rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
 	current_topleft_x_line := current_topleft_x_num + num_rect_dim.x + ui.theme.sizes[.TextAreaGutter]
 	current_line_number := 1 + line_offset
 	for {
@@ -310,7 +393,7 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int = nil) {
 		current_line_topleft := [2]int{current_topleft_x_line, current_topleft_y}
 		append(
 			ui.current_cmd_buffer,
-			UICommandTextline{line, current_line_topleft, rect, ui.theme.colors[.Text]},
+			UICommandTextline{line, current_line_topleft, text_rect, ui.theme.colors[.Text]},
 		)
 
 		skip_count := 0
@@ -330,16 +413,19 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int = nil) {
 			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
 			append(
 				ui.current_cmd_buffer,
-				UICommandTextline{num_string, current_num_topleft, rect, ui.theme.colors[.LineNumber]},
+				UICommandTextline{num_string, current_num_topleft, text_rect, ui.theme.colors[.LineNumber]},
 			)
 			current_line_number += 1
 			current_topleft_y += get_string_height(ui.font, line)
 		}
 
-		if skip_count == 0 {
+		if skip_count == 0 || current_topleft_y > text_rect_max_y {
 			break
 		}
 	}
+
+	line_offset_init^ = line_offset
+	cursor_y_scroll_ref_init^ = cursor_y_scroll_ref
 }
 
 separator :: proc(ui: ^UI, orientation: Orientation) {

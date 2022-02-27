@@ -46,9 +46,15 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 		true,
 		false,
 		true,
+		false,
 		[2]int{width, height},
 		{sdl_window, renderer, texture, texture_dim},
 	}
+}
+
+set_mouse_capture :: proc(window: ^Window, state: bool) {
+	sdl.CaptureMouse(sdl.bool(state))
+	window.is_mouse_captured = state
 }
 
 _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
@@ -146,8 +152,9 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 			window.is_focused = true
 
 		case .LEAVE:
-			input.cursor_pos = -1
-
+			if !window.is_mouse_captured {
+				input.cursor_pos = -1
+			}
 		}
 
 	case .MOUSEBUTTONDOWN, .MOUSEBUTTONUP:
