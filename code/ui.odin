@@ -317,7 +317,6 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int, cursor_y_
 		}
 	}
 	scrollbar_v_top_start := scrollbar_v_rect.topleft.y
-	scrollbar_v_top_end := scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y - scrollbar_v_length
 	scrollbar_v_top_pos := scrollbar_v_top_start
 
 	// NOTE(sen) Process line offset inputs
@@ -403,8 +402,8 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int, cursor_y_
 		}
 
 		// NOTE(khvorov) Line number
-		line_count := max(skip_count, ch_per_newline) / ch_per_newline
-		for line_index in 0 ..< line_count {
+		line_number_count := max(skip_count, ch_per_newline) / ch_per_newline
+		for line_index in 0 ..< line_number_count {
 			num_string: string
 			{
 				context.allocator = ui.arena_allocator
