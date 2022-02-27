@@ -261,7 +261,12 @@ button :: proc(
 	return state
 }
 
-text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int, cursor_y_scroll_ref_init: ^Maybe(f32)) {
+text_area_string :: proc(
+	ui: ^UI,
+	str: string,
+	line_offset_init: ^int,
+	cursor_y_scroll_ref_init: ^Maybe(f32),
+) {
 
 	assert(line_offset_init != nil)
 	assert(cursor_y_scroll_ref_init != nil)
@@ -295,7 +300,7 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int, cursor_y_
 	cursor_y_scroll_ref: Maybe(f32)
 	if cursor_y_scroll_ref_init^ != nil {
 		cursor_y_scroll_ref = clamp(
-			cursor_y_scroll_ref_init^.(f32), 
+			cursor_y_scroll_ref_init^.(f32),
 			f32(scrollbar_v_rect.topleft.y),
 			f32(scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y),
 		)
@@ -347,7 +352,9 @@ text_area_string :: proc(ui: ^UI, str: string, line_offset_init: ^int, cursor_y_
 	}
 
 	if line_count > 1 {
-		scrollbar_v_top_pos = int(f32(line_offset) / f32(line_count - 1) * f32(scrollbar_v_range) + f32(scrollbar_v_top_start))
+		scrollbar_v_top_pos = int(
+			f32(line_offset) / f32(line_count - 1) * f32(scrollbar_v_range) + f32(scrollbar_v_top_start),
+		)
 	}
 
 	// NOTE(sen) Position vertical scrollbar thumb
