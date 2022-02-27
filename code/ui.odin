@@ -264,24 +264,32 @@ button :: proc(
 text_area_string :: proc(
 	ui: ^UI,
 	str: string,
+	col_offset_bytes_init: ^int,
 	line_offset_init: ^int,
-	cursor_y_scroll_ref_init: ^Maybe(f32),
+	cursor_scroll_ref_init: ^[2]Maybe(f32),
 ) {
 
+	assert(col_offset_bytes_init != nil)
 	assert(line_offset_init != nil)
-	assert(cursor_y_scroll_ref_init != nil)
+	assert(cursor_scroll_ref_init != nil)
 
-	// NOTE(khvorov) Count lines
+	// NOTE(khvorov) Count lines and column widths
 	ch_per_newline := 1
 	if strings.index(str, "\r\n") != -1 {
 		ch_per_newline = 2
 	}
 	line_count := 0
+	max_col_bytes := 0
+	cur_col_width := 0
 	for index := 0; index < len(str); index += 1 {
 		ch := str[index]
 		if ch == '\n' || ch == '\r' {
 			line_count += 1
 			index += ch_per_newline - 1
+			max_col_bytes = max(max_col_bytes, cur_col_width)
+			cur_col_width = 0
+		} else {
+			cur_col_width += 1
 		}
 	}
 	line_count += 1 // NOTE(khvorov) Start counting from 1
@@ -294,19 +302,25 @@ text_area_string :: proc(
 	text_rect.dim -= ui.theme.sizes[.ScrollbarWidth]
 	text_rect_max_y := text_rect.topleft.y + text_rect.dim.y
 
-	scrollbar_v_rect := text_area_rect
+	line_numbers_rect := text_rect
+	line_numbers_rect.dim.x = num_rect_dim.x + 2 * ui.theme.sizes[.TextAreaGutter]
+	text_rect.dim.x -= line_numbers_rect.dim.x
+	text_rect.topleft.x += line_numbers_rect.dim.x
+
+	cursor_scroll_ref := cursor_scroll_ref_init^
+
+	scrollbar_v_rect := text_rect
 	scrollbar_v_rect.topleft.x += text_rect.dim.x
 	scrollbar_v_rect.dim.x = ui.theme.sizes[.ScrollbarWidth]
-	cursor_y_scroll_ref: Maybe(f32)
-	if cursor_y_scroll_ref_init^ != nil {
-		cursor_y_scroll_ref = clamp(
-			cursor_y_scroll_ref_init^.(f32),
+	if cursor_scroll_ref_init.y != nil {
+		cursor_scroll_ref.y = clamp(
+			cursor_scroll_ref_init.y.(f32),
 			f32(scrollbar_v_rect.topleft.y),
 			f32(scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y),
 		)
 	}
 
-	scrollbar_h_rect := text_area_rect
+	scrollbar_h_rect := text_rect
 	scrollbar_h_rect.topleft.y += text_rect.dim.y
 	scrollbar_h_rect.dim.y = ui.theme.sizes[.ScrollbarWidth]
 
@@ -326,10 +340,10 @@ text_area_string :: proc(
 
 	// NOTE(sen) Process line offset inputs
 	line_offset_delta := 0
-	if cursor_y_scroll_ref == nil {
+	if cursor_scroll_ref.y == nil {
 		line_offset_delta = ui.input.scroll.y
 	} else {
-		scroll_delta_px := f32(ui.input.cursor_pos.y) - cursor_y_scroll_ref.(f32)
+		scroll_delta_px := f32(ui.input.cursor_pos.y) - cursor_scroll_ref.y.(f32)
 		line_offset_delta = int(scroll_delta_px / scrollbar_v_inc_per_line)
 	}
 	old_line_offset := clamp(line_offset_init^, 0, line_count - 1)
@@ -369,21 +383,37 @@ text_area_string :: proc(
 	append(ui.current_cmd_buffer, UICommandRect{scrollbar_v_thumb_rect, scrollbar_v_thumb_color})
 
 	// NOTE(sen) Vertical scroll state input check
-	if scrollbar_v_thumb_state == .Pressed && cursor_y_scroll_ref == nil {
-		cursor_y_scroll_ref = f32(ui.input.cursor_pos.y)
-	} else if cursor_y_scroll_ref != nil {
+	if scrollbar_v_thumb_state == .Pressed && cursor_scroll_ref.y == nil {
+		cursor_scroll_ref.y = f32(ui.input.cursor_pos.y)
+	} else if cursor_scroll_ref.y != nil {
 		if !ui.input.keys[.MouseLeft].ended_down {
-			cursor_y_scroll_ref = nil
+			cursor_scroll_ref.y = nil
 		} else {
-			cursor_y_scroll_ref = cursor_y_scroll_ref.(f32) + f32(line_offset_delta) * scrollbar_v_inc_per_line
+			cursor_scroll_ref.y = cursor_scroll_ref.y.(f32) + f32(line_offset_delta) * scrollbar_v_inc_per_line
 		}
 	}
+
+	// NOTE(khvorov) Figure out column offset
+	max_col_width_px := max_col_bytes * ui.font.px_width
+	max_col_slack_px := max(max_col_width_px - text_rect.dim.x, 0)
+	max_col_slack_bytes := max_col_slack_px / ui.font.px_width
+	if max_col_slack_px > 0 {
+		max_col_slack_bytes += 1
+	}
+	old_col_offset_bytes := clamp(col_offset_bytes_init^, 0, max_col_slack_bytes)
+
+	col_offset_delta := 0
+	if cursor_scroll_ref.x == nil {
+		col_offset_delta = ui.input.scroll.x
+	}
+	col_offset_bytes := clamp(old_col_offset_bytes + col_offset_delta, 0, max_col_slack_bytes)
+	col_offset_delta = col_offset_bytes - old_col_offset_bytes
 
 	// NOTE(khvorov) Text content
 	str_left := str[clamp(byte_offset, 0, len(str)):]
 	current_topleft_y := text_area_rect.topleft.y
-	current_topleft_x_num := text_area_rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
-	current_topleft_x_line := current_topleft_x_num + num_rect_dim.x + ui.theme.sizes[.TextAreaGutter]
+	current_topleft_x_num := line_numbers_rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
+	current_topleft_x_line := text_rect.topleft.x
 	current_line_number := 1 + line_offset
 	for {
 
@@ -393,14 +423,17 @@ text_area_string :: proc(
 			line_end_index = len(str_left)
 		}
 
-		line := str_left[:line_end_index]
+		line_init := str_left[:line_end_index]
 		str_left = str_left[line_end_index:]
 
-		current_line_topleft := [2]int{current_topleft_x_line, current_topleft_y}
-		append(
-			ui.current_cmd_buffer,
-			UICommandTextline{line, current_line_topleft, text_rect, ui.theme.colors[.Text]},
-		)
+		if len(line_init) > col_offset_bytes {
+			line := line_init[col_offset_bytes:]
+			current_line_topleft := [2]int{current_topleft_x_line, current_topleft_y}
+			append(
+				ui.current_cmd_buffer,
+				UICommandTextline{line, current_line_topleft, text_rect, ui.theme.colors[.Text]},
+			)
+		}
 
 		skip_count := 0
 		for len(str_left) > 0 && (str_left[0] == '\n' || str_left[0] == '\r') {
@@ -419,10 +452,10 @@ text_area_string :: proc(
 			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
 			append(
 				ui.current_cmd_buffer,
-				UICommandTextline{num_string, current_num_topleft, text_rect, ui.theme.colors[.LineNumber]},
+				UICommandTextline{num_string, current_num_topleft, line_numbers_rect, ui.theme.colors[.LineNumber]},
 			)
 			current_line_number += 1
-			current_topleft_y += get_string_height(ui.font, line)
+			current_topleft_y += get_string_height(ui.font, line_init)
 		}
 
 		if skip_count == 0 || current_topleft_y > text_rect_max_y {
@@ -431,7 +464,8 @@ text_area_string :: proc(
 	}
 
 	line_offset_init^ = line_offset
-	cursor_y_scroll_ref_init^ = cursor_y_scroll_ref
+	cursor_scroll_ref_init^ = cursor_scroll_ref
+	col_offset_bytes_init^ = col_offset_bytes
 }
 
 separator :: proc(ui: ^UI, orientation: Orientation) {

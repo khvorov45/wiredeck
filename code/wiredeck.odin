@@ -18,10 +18,11 @@ TopBarMenu :: enum {
 }
 
 OpenedFile :: struct {
-	path:                string,
-	content:             string,
-	line_offset:         int,
-	cursor_y_scroll_ref: Maybe(f32),
+	path:              string,
+	content:           string,
+	line_offset:       int,
+	col_offset:        int,
+	cursor_scroll_ref: [2]Maybe(f32),
 }
 
 main :: proc() {
@@ -183,8 +184,14 @@ main :: proc() {
 		if editing, ok := state.editing.(int); ok {
 
 			file := &state.opened_files[editing]
-			text_area_string(&ui, file.content, &file.line_offset, &file.cursor_y_scroll_ref)
-			if file.cursor_y_scroll_ref != nil {
+			text_area_string(
+				&ui,
+				file.content,
+				&file.col_offset,
+				&file.line_offset,
+				&file.cursor_scroll_ref,
+			)
+			if file.cursor_scroll_ref.y != nil {
 				set_mouse_capture(&window, true)
 			} else {
 				set_mouse_capture(&window, false)
