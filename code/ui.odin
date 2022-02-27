@@ -43,6 +43,7 @@ SizeID :: enum {
 	ScrollbarWidth,
 	ScrollbarThumbLengthMin,
 	ScrollbarIncPerLine,
+	ScrollbarIncPerCol,
 }
 
 Rect2i :: struct {
@@ -111,6 +112,7 @@ init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 	theme.sizes[.ScrollbarWidth] = 10
 	theme.sizes[.ScrollbarThumbLengthMin] = 40
 	theme.sizes[.ScrollbarIncPerLine] = 20
+	theme.sizes[.ScrollbarIncPerCol] = 20
 
 	ui^ = UI {
 		input = input,
@@ -327,7 +329,7 @@ text_area_string :: proc(
 	// NOTE(khvorov) Vertical Scrollbar
 	scrollbar_v_inc_per_line := f32(ui.theme.sizes[.ScrollbarIncPerLine])
 	scrollbar_v_range := (line_count - 1) * int(scrollbar_v_inc_per_line)
-	scrollbar_v_length := text_area_rect.dim.y - scrollbar_v_range
+	scrollbar_v_length := scrollbar_v_rect.dim.y - scrollbar_v_range
 	if scrollbar_v_length < ui.theme.sizes[.ScrollbarThumbLengthMin] {
 		scrollbar_v_length = ui.theme.sizes[.ScrollbarThumbLengthMin]
 		scrollbar_v_range = scrollbar_v_rect.dim.y - scrollbar_v_length
@@ -393,21 +395,67 @@ text_area_string :: proc(
 		}
 	}
 
-	// NOTE(khvorov) Figure out column offset
+	// NOTE(khvorov) Figure out max column offset
 	max_col_width_px := max_col_bytes * ui.font.px_width
 	max_col_slack_px := max(max_col_width_px - text_rect.dim.x, 0)
 	max_col_slack_bytes := max_col_slack_px / ui.font.px_width
 	if max_col_slack_px > 0 {
 		max_col_slack_bytes += 1
 	}
-	old_col_offset_bytes := clamp(col_offset_bytes_init^, 0, max_col_slack_bytes)
 
+	// NOTE(khvorov) Horizontal scrollbar
+	scrollbar_h_inc_per_col := f32(ui.theme.sizes[.ScrollbarIncPerCol])
+	scrollbar_h_range := max_col_slack_bytes * int(scrollbar_h_inc_per_col)
+	scrollbar_h_length := scrollbar_h_rect.dim.x - scrollbar_h_range
+	if scrollbar_h_length < ui.theme.sizes[.ScrollbarThumbLengthMin] {
+		scrollbar_h_length = ui.theme.sizes[.ScrollbarThumbLengthMin]
+		scrollbar_h_range = scrollbar_h_rect.dim.x - scrollbar_h_length
+		if max_col_slack_bytes > 0 {
+			scrollbar_h_inc_per_col = f32(scrollbar_h_range) / f32(max_col_slack_bytes)
+		}
+	}
+	scrollbar_h_left_start := scrollbar_h_rect.topleft.x
+	scrollbar_h_left_pos := scrollbar_h_left_start
+
+	// NOTE(khvorov) Horizontal scroll inputs
 	col_offset_delta := 0
 	if cursor_scroll_ref.x == nil {
 		col_offset_delta = ui.input.scroll.x
+	} else {
+		scroll_delta_px := f32(ui.input.cursor_pos.x) - cursor_scroll_ref.x.(f32)
+		col_offset_delta = int(scroll_delta_px / scrollbar_h_inc_per_col)
 	}
+	old_col_offset_bytes := clamp(col_offset_bytes_init^, 0, max_col_slack_bytes)
 	col_offset_bytes := clamp(old_col_offset_bytes + col_offset_delta, 0, max_col_slack_bytes)
 	col_offset_delta = col_offset_bytes - old_col_offset_bytes
+
+	if max_col_slack_bytes > 0 {
+		scrollbar_h_left_pos = int(
+			f32(col_offset_bytes) / f32(max_col_slack_bytes) * f32(scrollbar_h_range) + f32(scrollbar_h_left_start),
+		)
+	}
+
+	// NOTE(sen) Position horizontal scrollbar thumb
+	scrollbar_h_thumb_rect := scrollbar_h_rect
+	scrollbar_h_thumb_rect.topleft.x = scrollbar_h_left_pos
+	scrollbar_h_thumb_rect.dim.x = scrollbar_h_length
+	scrollbar_h_thumb_color := ui.theme.colors[.ScrollbarThumb]
+	scrollbar_h_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_h_thumb_rect)
+	if scrollbar_h_thumb_state > .Normal {
+		scrollbar_h_thumb_color = ui.theme.colors[.ScrollbarThumbHovered]
+	}
+	append(ui.current_cmd_buffer, UICommandRect{scrollbar_h_thumb_rect, scrollbar_h_thumb_color})
+
+	// NOTE(sen) Horizontal scroll state input check
+	if scrollbar_h_thumb_state == .Pressed && cursor_scroll_ref.x == nil {
+		cursor_scroll_ref.x = f32(ui.input.cursor_pos.x)
+	} else if cursor_scroll_ref.x != nil {
+		if !ui.input.keys[.MouseLeft].ended_down {
+			cursor_scroll_ref.x = nil
+		} else {
+			cursor_scroll_ref.x = cursor_scroll_ref.x.(f32) + f32(col_offset_delta) * scrollbar_h_inc_per_col
+		}
+	}
 
 	// NOTE(khvorov) Text content
 	str_left := str[clamp(byte_offset, 0, len(str)):]

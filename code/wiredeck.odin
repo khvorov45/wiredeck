@@ -184,14 +184,8 @@ main :: proc() {
 		if editing, ok := state.editing.(int); ok {
 
 			file := &state.opened_files[editing]
-			text_area_string(
-				&ui,
-				file.content,
-				&file.col_offset,
-				&file.line_offset,
-				&file.cursor_scroll_ref,
-			)
-			if file.cursor_scroll_ref.y != nil {
+			text_area_string(&ui, file.content, &file.col_offset, &file.line_offset, &file.cursor_scroll_ref)
+			if file.cursor_scroll_ref.y != nil || file.cursor_scroll_ref.x != nil {
 				set_mouse_capture(&window, true)
 			} else {
 				set_mouse_capture(&window, false)
