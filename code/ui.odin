@@ -290,6 +290,8 @@ text_area_string :: proc(
 			index += ch_per_newline - 1
 			max_col_bytes = max(max_col_bytes, cur_col_width)
 			cur_col_width = 0
+		} else if ch == '\t' {
+			cur_col_width += 4
 		} else {
 			cur_col_width += 1
 		}
@@ -427,6 +429,7 @@ text_area_string :: proc(
 	}
 	old_col_offset_bytes := clamp(col_offset_bytes_init^, 0, max_col_slack_bytes)
 	col_offset_bytes := clamp(old_col_offset_bytes + col_offset_delta, 0, max_col_slack_bytes)
+	col_offset_px := col_offset_bytes * ui.font.px_width
 	col_offset_delta = col_offset_bytes - old_col_offset_bytes
 
 	if max_col_slack_bytes > 0 {
@@ -474,14 +477,11 @@ text_area_string :: proc(
 		line_init := str_left[:line_end_index]
 		str_left = str_left[line_end_index:]
 
-		if len(line_init) > col_offset_bytes {
-			line := line_init[col_offset_bytes:]
-			current_line_topleft := [2]int{current_topleft_x_line, current_topleft_y}
-			append(
-				ui.current_cmd_buffer,
-				UICommandTextline{line, current_line_topleft, text_rect, ui.theme.colors[.Text]},
-			)
-		}
+		current_line_topleft := [2]int{current_topleft_x_line - col_offset_px, current_topleft_y}
+		append(
+			ui.current_cmd_buffer,
+			UICommandTextline{line_init, current_line_topleft, text_rect, ui.theme.colors[.Text]},
+		)
 
 		skip_count := 0
 		for len(str_left) > 0 && (str_left[0] == '\n' || str_left[0] == '\r') {
