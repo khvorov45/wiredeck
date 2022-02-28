@@ -263,40 +263,9 @@ button :: proc(
 	return state
 }
 
-text_area_string :: proc(
-	ui: ^UI,
-	str: string,
-	col_offset_bytes_init: ^int,
-	line_offset_init: ^int,
-	cursor_scroll_ref_init: ^[2]Maybe(f32),
-) {
+text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 
-	assert(col_offset_bytes_init != nil)
-	assert(line_offset_init != nil)
-	assert(cursor_scroll_ref_init != nil)
-
-	// NOTE(khvorov) Count lines and column widths
-	ch_per_newline := 1
-	if strings.index(str, "\r\n") != -1 {
-		ch_per_newline = 2
-	}
-	line_count := 0
-	max_col_bytes := 0
-	cur_col_width := 0
-	for index := 0; index < len(str); index += 1 {
-		ch := str[index]
-		if ch == '\n' || ch == '\r' {
-			line_count += 1
-			index += ch_per_newline - 1
-			max_col_bytes = max(max_col_bytes, cur_col_width)
-			cur_col_width = 0
-		} else if ch == '\t' {
-			cur_col_width += 4
-		} else {
-			cur_col_width += 1
-		}
-	}
-	line_count += 1 // NOTE(khvorov) Start counting from 1
+	line_count := file.line_count
 
 	line_count_str := fmt.tprintf("%d", line_count)
 	num_rect_dim := [2]int{len(line_count_str) * ui.font.px_width, ui.font.px_height}
@@ -311,14 +280,14 @@ text_area_string :: proc(
 	text_rect.dim.x -= line_numbers_rect.dim.x
 	text_rect.topleft.x += line_numbers_rect.dim.x
 
-	cursor_scroll_ref := cursor_scroll_ref_init^
+	cursor_scroll_ref := file.cursor_scroll_ref
 
 	scrollbar_v_rect := text_rect
 	scrollbar_v_rect.topleft.x += text_rect.dim.x
 	scrollbar_v_rect.dim.x = ui.theme.sizes[.ScrollbarWidth]
-	if cursor_scroll_ref_init.y != nil {
+	if file.cursor_scroll_ref.y != nil {
 		cursor_scroll_ref.y = clamp(
-			cursor_scroll_ref_init.y.(f32),
+			file.cursor_scroll_ref.y.(f32),
 			f32(scrollbar_v_rect.topleft.y),
 			f32(scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y),
 		)
@@ -350,32 +319,52 @@ text_area_string :: proc(
 		scroll_delta_px := f32(ui.input.cursor_pos.y) - cursor_scroll_ref.y.(f32)
 		line_offset_delta = int(scroll_delta_px / scrollbar_v_inc_per_line)
 	}
-	old_line_offset := clamp(line_offset_init^, 0, line_count - 1)
+	old_line_offset := clamp(file.line_offset_lines, 0, line_count - 1)
 	line_offset := clamp(old_line_offset + line_offset_delta, 0, line_count - 1)
 	line_offset_delta = line_offset - old_line_offset
 
 	// NOTE(sen) Figure out byte offset
-	byte_offset := 0
-	cur_line := 0
-	for index := 0; index < len(str); index += 1 {
-		ch := str[index]
-		if ch == '\n' || ch == '\r' {
-			cur_line += 1
-			if cur_line == line_offset {
-				byte_offset = index + ch_per_newline
-				break
+	byte_offset := file.line_offset_bytes
+	if line_offset_delta != 0 {
+		lines_skipped := 0
+
+		if line_offset_delta > 0 {
+
+			for index := byte_offset; index < len(file.content); index += 1 {
+				ch := file.content[index]
+				if ch == '\n' || ch == '\r' {
+					lines_skipped += 1
+					if lines_skipped == line_offset_delta {
+						byte_offset = index + file.ch_per_newline
+						break
+					}
+					index += file.ch_per_newline - 1
+				}
 			}
-			index += ch_per_newline - 1
+		} else if line_offset == 0 {
+			byte_offset = 0
+		} else {
+
+			for index := byte_offset - (file.ch_per_newline + 1); index >= 0; index -= 1 {
+				ch := file.content[index]
+				if ch == '\n' || ch == '\r' {
+					lines_skipped += 1
+					if lines_skipped == -line_offset_delta {
+						byte_offset = index + 1
+						break
+					}
+					index -= (file.ch_per_newline - 1)
+				}
+			}
 		}
 	}
 
+	// NOTE(sen) Position vertical scrollbar thumb
 	if line_count > 1 {
 		scrollbar_v_top_pos = int(
 			f32(line_offset) / f32(line_count - 1) * f32(scrollbar_v_range) + f32(scrollbar_v_top_start),
 		)
 	}
-
-	// NOTE(sen) Position vertical scrollbar thumb
 	scrollbar_v_thumb_rect := scrollbar_v_rect
 	scrollbar_v_thumb_rect.topleft.y = scrollbar_v_top_pos
 	scrollbar_v_thumb_rect.dim.y = scrollbar_v_length
@@ -398,7 +387,7 @@ text_area_string :: proc(
 	}
 
 	// NOTE(khvorov) Figure out max column offset
-	max_col_width_px := max_col_bytes * ui.font.px_width
+	max_col_width_px := file.max_col_width_glyphs * ui.font.px_width
 	max_col_slack_px := max(max_col_width_px - text_rect.dim.x, 0)
 	max_col_slack_bytes := max_col_slack_px / ui.font.px_width
 	if max_col_slack_px > 0 {
@@ -427,7 +416,7 @@ text_area_string :: proc(
 		scroll_delta_px := f32(ui.input.cursor_pos.x) - cursor_scroll_ref.x.(f32)
 		col_offset_delta = int(scroll_delta_px / scrollbar_h_inc_per_col)
 	}
-	old_col_offset_bytes := clamp(col_offset_bytes_init^, 0, max_col_slack_bytes)
+	old_col_offset_bytes := clamp(file.col_offset, 0, max_col_slack_bytes)
 	col_offset_bytes := clamp(old_col_offset_bytes + col_offset_delta, 0, max_col_slack_bytes)
 	col_offset_px := col_offset_bytes * ui.font.px_width
 	col_offset_delta = col_offset_bytes - old_col_offset_bytes
@@ -461,7 +450,7 @@ text_area_string :: proc(
 	}
 
 	// NOTE(khvorov) Text content
-	str_left := str[clamp(byte_offset, 0, len(str)):]
+	str_left := file.content[clamp(byte_offset, 0, len(file.content)):]
 	current_topleft_y := text_area_rect.topleft.y
 	current_topleft_x_num := line_numbers_rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
 	current_topleft_x_line := text_rect.topleft.x
@@ -490,7 +479,7 @@ text_area_string :: proc(
 		}
 
 		// NOTE(khvorov) Line number
-		line_number_count := max(skip_count, ch_per_newline) / ch_per_newline
+		line_number_count := max(skip_count, file.ch_per_newline) / file.ch_per_newline
 		for line_index in 0 ..< line_number_count {
 			num_string: string
 			{
@@ -511,9 +500,10 @@ text_area_string :: proc(
 		}
 	}
 
-	line_offset_init^ = line_offset
-	cursor_scroll_ref_init^ = cursor_scroll_ref
-	col_offset_bytes_init^ = col_offset_bytes
+	file.line_offset_lines = line_offset
+	file.line_offset_bytes = byte_offset
+	file.cursor_scroll_ref = cursor_scroll_ref
+	file.col_offset = col_offset_bytes
 }
 
 separator :: proc(ui: ^UI, orientation: Orientation) {
