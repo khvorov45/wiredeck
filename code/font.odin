@@ -56,16 +56,6 @@ init_font :: proc(font: ^Font, filepath: string) {
 	font.px_width = int(font.chardata[0].xadvance)
 }
 
-get_string_width :: proc(font: ^Font, str: string) -> int {
-	result := len(str) * font.px_width
-	return result
-}
-
-get_string_height :: proc(font: ^Font, str: string) -> int {
-	result := font.px_height
-	return result
-}
-
 get_glyph_tex_coords_and_offset :: proc(font: ^Font, glyph: rune) -> (Rect2i, [2]int) {
 
 	ch_index := int(glyph) - int(font.firstchar)

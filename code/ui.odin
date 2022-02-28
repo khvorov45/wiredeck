@@ -299,7 +299,7 @@ text_area_string :: proc(
 	line_count += 1 // NOTE(khvorov) Start counting from 1
 
 	line_count_str := fmt.tprintf("%d", line_count)
-	num_rect_dim := [2]int{get_string_width(ui.font, line_count_str), get_string_height(ui.font, "")}
+	num_rect_dim := [2]int{len(line_count_str) * ui.font.px_width, ui.font.px_height}
 
 	text_area_rect := _take_entire_rect(last_container(ui))
 	text_rect := text_area_rect
@@ -503,7 +503,7 @@ text_area_string :: proc(
 				UICommandTextline{num_string, current_num_topleft, line_numbers_rect, ui.theme.colors[.LineNumber]},
 			)
 			current_line_number += 1
-			current_topleft_y += get_string_height(ui.font, line_init)
+			current_topleft_y += ui.font.px_height
 		}
 
 		if skip_count == 0 || current_topleft_y > text_rect_max_y {
@@ -541,8 +541,8 @@ get_button_pad :: proc(ui: ^UI) -> [2][2]int {
 }
 
 get_button_dim :: proc(ui: ^UI, label: string = "") -> [2]int {
-	text_width := get_string_width(ui.font, label)
-	text_height := get_string_height(ui.font, label)
+	text_width := ui.font.px_width * len(label)
+	text_height := ui.font.px_height
 	padding := get_button_pad(ui)
 	result := [2]int{
 		text_width + padding.x[0] + padding.x[1],
