@@ -22,18 +22,23 @@ UI :: struct {
 
 Theme :: struct {
 	colors: [ColorID][4]f32,
+	text_colors: [TextColorID][4]f32,
 	sizes:  [SizeID]int,
 }
 
 ColorID :: enum {
 	Background,
 	BackgroundHovered,
-	Text,
 	LineNumber,
 	Border,
 	ScrollbarTrack,
 	ScrollbarThumb,
 	ScrollbarThumbHovered,
+}
+
+TextColorID :: enum {
+	Normal,
+	Comment,
 }
 
 SizeID :: enum {
@@ -84,7 +89,7 @@ UICommandTextline :: struct {
 	str:          string,
 	text_topleft: [2]int,
 	clip_rect:    Rect2i,
-	color:        [4]f32,
+	colors:       union{[4]f32, [][4]f32},
 }
 
 Align :: enum {
@@ -99,12 +104,14 @@ init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
 
 	theme.colors[.Background] = [4]f32{0.1, 0.1, 0.1, 1}
 	theme.colors[.BackgroundHovered] = [4]f32{0.2, 0.2, 0.2, 1}
-	theme.colors[.Text] = [4]f32{0.9, 0.9, 0.9, 1}
 	theme.colors[.Border] = [4]f32{0.3, 0.3, 0.3, 1}
 	theme.colors[.LineNumber] = [4]f32{0.7, 0.7, 0.7, 1}
 	theme.colors[.ScrollbarTrack] = [4]f32{0.2, 0.2, 0.2, 1}
 	theme.colors[.ScrollbarThumb] = [4]f32{0.5, 0.5, 0.5, 1}
 	theme.colors[.ScrollbarThumbHovered] = [4]f32{0.7, 0.7, 0.7, 1}
+
+	theme.text_colors[.Normal] = [4]f32{0.9, 0.9, 0.9, 1}
+	theme.text_colors[.Comment] = [4]f32{0.5, 0.5, 0.5, 1}
 
 	theme.sizes[.ButtonPadding] = 5
 	theme.sizes[.Separator] = 5
@@ -256,7 +263,7 @@ button :: proc(
 
 		append(
 			ui.current_cmd_buffer,
-			UICommandTextline{label_str, text_topleft, rect, ui.theme.colors[.Text]},
+			UICommandTextline{label_str, text_topleft, rect, ui.theme.text_colors[.Normal]},
 		)
 	}
 
@@ -370,6 +377,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 			}
 		}
 	}
+	byte_offset = clamp(byte_offset, 0, len(file.content))
 
 	// NOTE(sen) Position vertical scrollbar thumb
 	if line_count > 1 {
@@ -462,7 +470,9 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	}
 
 	// NOTE(khvorov) Text content
-	str_left := file.content[clamp(byte_offset, 0, len(file.content)):]
+	assert(len(file.content) == len(file.colors))
+	str_left := file.content[byte_offset:]
+	colors_left := file.colors[byte_offset:]
 	current_topleft_y := text_area_rect.topleft.y
 	current_topleft_x_num := line_numbers_rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
 	current_topleft_x_line := text_rect.topleft.x
@@ -475,15 +485,17 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 			line_end_index = len(str_left)
 		}
 
-		line_init := str_left[:line_end_index]
-		str_left = str_left[line_end_index:]
+		line := str_left[:line_end_index]
+		line_col := colors_left[:line_end_index]
 
 		current_line_topleft := [2]int{current_topleft_x_line - col_offset_px, current_topleft_y}
 		append(
 			ui.current_cmd_buffer,
-			UICommandTextline{line_init, current_line_topleft, text_rect, ui.theme.colors[.Text]},
+			UICommandTextline{line, current_line_topleft, text_rect, line_col},
 		)
 
+		str_left = str_left[line_end_index:]
+		colors_left = colors_left[line_end_index:]
 		skip_count := 0
 		for len(str_left) > 0 {
 			ch := str_left[0]
@@ -495,8 +507,10 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 				}
 				if ch == '\r' && next_ch == '\n' {
 					str_left = str_left[2:]
+					colors_left = colors_left[2:]
 				} else {
 					str_left = str_left[1:]
+					colors_left = colors_left[1:]
 				}
 			} else {
 				break
@@ -514,7 +528,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
 			append(
 				ui.current_cmd_buffer,
-				UICommandTextline{num_string, current_num_topleft, line_numbers_rect, ui.theme.colors[.LineNumber]},
+				UICommandTextline{num_string, current_num_topleft, line_numbers_rect, ui.theme.text_colors[.Comment]},
 			)
 			current_line_number += 1
 			current_topleft_y += ui.font.px_height

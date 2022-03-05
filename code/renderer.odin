@@ -110,7 +110,7 @@ draw_alpha_tex_rect_px :: proc(
 draw_glyph_px :: proc(
 	renderer: ^Renderer,
 	font: ^Font,
-	glyph: rune,
+	glyph: u8,
 	topleft: [2]int,
 	color: [4]f32,
 	clip_rect: Rect2i,
@@ -135,12 +135,20 @@ draw_text_px :: proc(
 	str: string,
 	text_topleft: [2]int,
 	clip_rect: Rect2i,
-	color: [4]f32,
+	colors: union{[4]f32, [][4]f32},
 ) {
 	cur_topleft := text_topleft
 	rect_bottomright := clip_rect.topleft + clip_rect.dim
-	for ch in str {
+	for index in 0..<len(str) {
+		ch := str[index]
 		if ch != ' ' && ch != '\t' {
+			color: [4]f32
+			switch col in colors {
+			case [4]f32:
+				color = col
+			case [][4]f32:
+				color = col[index]
+			}
 			draw_glyph_px(renderer, font, ch, cur_topleft, color, clip_rect)
 		}
 		cur_topleft.x += font.px_width

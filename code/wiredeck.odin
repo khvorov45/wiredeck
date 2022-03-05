@@ -3,6 +3,7 @@ package wiredeck
 import "core:fmt"
 import "core:strings"
 import "core:os"
+import "core:unicode"
 
 State :: struct {
 	top_bar_open_menu:     TopBarMenu,
@@ -20,6 +21,7 @@ TopBarMenu :: enum {
 OpenedFile :: struct {
 	path:                 string,
 	content:              string,
+	colors:               [][4]f32, // NOTE(sen) Same length as string bytes
 
 	line_count:           int,
 	max_col_width_glyphs: int,
@@ -48,8 +50,8 @@ main :: proc() {
 	init_ui(&ui, window.dim.x, window.dim.y, &input, &font)
 
 	state: State
-	open_file(&state, "build.bat")
-	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c")
+	open_file(&state, "build.bat", ui.theme.text_colors)
+	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c", ui.theme.text_colors)
 	state.editing = 0
 
 	for window.is_running {
@@ -130,7 +132,7 @@ main :: proc() {
 						if button(&ui, "Open file", false, .Begin) == .Clicked {
 							filepath := get_path_from_platform_file_dialog(.File)
 							if filepath != "" {
-								open_file(&state, filepath)
+								open_file(&state, filepath, ui.theme.text_colors)
 							}
 						}
 
@@ -209,7 +211,7 @@ main :: proc() {
 			case UICommandRect:
 				draw_rect_px(&renderer, cmd.rect, cmd.color)
 			case UICommandTextline:
-				draw_text_px(&renderer, &font, cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.color)
+				draw_text_px(&renderer, &font, cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.colors)
 			}
 		}
 
@@ -217,7 +219,7 @@ main :: proc() {
 	}
 }
 
-open_file :: proc(state: ^State, filepath: string) {
+open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f32) {
 	if file_contents, ok := os.read_entire_file(filepath); ok {
 
 		// NOTE(khvorov) Count lines and column widths
@@ -248,9 +250,12 @@ open_file :: proc(state: ^State, filepath: string) {
 		max_col_width_glyphs = max(max_col_width_glyphs, cur_col_width)
 		line_count += 1 // NOTE(khvorov) Start counting from 1
 
+		colors := highlight(filepath, str, text_cols)
+
 		opened_file := OpenedFile {
 			path = strings.clone(filepath),
 			content = str,
+			colors = colors,
 			line_offset_lines = 0,
 			line_offset_bytes = 0,
 			col_offset = 0,
