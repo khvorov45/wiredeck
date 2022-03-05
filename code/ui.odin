@@ -334,26 +334,38 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 				ch := file.content[index]
 				if ch == '\n' || ch == '\r' {
 					lines_skipped += 1
+					next_ch: u8 = 0
+					if index + 1 < len(file.content) {
+						next_ch = file.content[index + 1]
+					}
+					if ch == '\r' && next_ch == '\n' {
+						index += 1
+					}
 					if lines_skipped == line_offset_delta {
-						byte_offset = index + file.ch_per_newline
+						byte_offset = index + 1
 						break
 					}
-					index += file.ch_per_newline - 1
 				}
 			}
 		} else if line_offset == 0 {
 			byte_offset = 0
 		} else {
 
-			for index := byte_offset - (file.ch_per_newline + 1); index >= 0; index -= 1 {
+			for index := byte_offset - 1; index >= 0; index -= 1 {
 				ch := file.content[index]
 				if ch == '\n' || ch == '\r' {
 					lines_skipped += 1
-					if lines_skipped == -line_offset_delta {
+					if lines_skipped == -(line_offset_delta) + 1 {
 						byte_offset = index + 1
 						break
 					}
-					index -= (file.ch_per_newline - 1)
+					prev_ch: u8 = 0
+					if index - 1 >= 0 {
+						prev_ch = file.content[index - 1]
+					}
+					if ch == '\n' && prev_ch == '\r' {
+						index -= 1
+					}
 				}
 			}
 		}
@@ -473,13 +485,26 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		)
 
 		skip_count := 0
-		for len(str_left) > 0 && (str_left[0] == '\n' || str_left[0] == '\r') {
-			skip_count += 1
-			str_left = str_left[1:]
+		for len(str_left) > 0 {
+			ch := str_left[0]
+			if ch == '\n' || ch == '\r' {
+				skip_count += 1
+				next_ch: u8 = 0
+				if len(str_left) > 1 {
+					next_ch = str_left[1]
+				}
+				if ch == '\r' && next_ch == '\n' {
+					str_left = str_left[2:]
+				} else {
+					str_left = str_left[1:]
+				}
+			} else {
+				break
+			}
 		}
 
 		// NOTE(khvorov) Line number
-		line_number_count := max(skip_count, file.ch_per_newline) / file.ch_per_newline
+		line_number_count := max(skip_count, 1)
 		for line_index in 0 ..< line_number_count {
 			num_string: string
 			{

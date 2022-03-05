@@ -21,7 +21,6 @@ OpenedFile :: struct {
 	path:                 string,
 	content:              string,
 
-	ch_per_newline:       int,
 	line_count:           int,
 	max_col_width_glyphs: int,
 
@@ -222,19 +221,21 @@ open_file :: proc(state: ^State, filepath: string) {
 	if file_contents, ok := os.read_entire_file(filepath); ok {
 
 		// NOTE(khvorov) Count lines and column widths
-		file_contents_string := string(file_contents)
-		ch_per_newline := 1
-		if strings.index(file_contents_string, "\r\n") != -1 {
-			ch_per_newline = 2
-		}
+		str := string(file_contents)
 		line_count := 0
 		max_col_width_glyphs := 0
 		cur_col_width := 0
-		for index := 0; index < len(file_contents_string); index += 1 {
-			ch := file_contents_string[index]
+		for index := 0; index < len(str); index += 1 {
+			ch := str[index]
 			if ch == '\n' || ch == '\r' {
 				line_count += 1
-				index += ch_per_newline - 1
+				next_ch: u8 = 0
+				if index + 1 < len(str) {
+					next_ch = str[index + 1]
+				}
+				if ch == '\r' && next_ch == '\n' {
+					index += 1
+				}
 				max_col_width_glyphs = max(max_col_width_glyphs, cur_col_width)
 				cur_col_width = 0
 			} else if ch == '\t' {
@@ -249,14 +250,13 @@ open_file :: proc(state: ^State, filepath: string) {
 
 		opened_file := OpenedFile {
 			path = strings.clone(filepath),
-			content = file_contents_string,
+			content = str,
 			line_offset_lines = 0,
 			line_offset_bytes = 0,
 			col_offset = 0,
 			cursor_scroll_ref = {nil, nil},
 			line_count = line_count,
 			max_col_width_glyphs = max_col_width_glyphs,
-			ch_per_newline = ch_per_newline,
 		}
 		append(&state.opened_files, opened_file)
 	}
