@@ -63,8 +63,7 @@ draw_line_px :: proc(renderer: ^Renderer, line_init: LineSegment2i, color: [4]f3
 
 draw_alpha_tex_rect_px :: proc(
 	renderer: ^Renderer,
-	tex_coords: [2]int,
-	tex_dim: [2]int,
+	tex_rect: Rect2i,
 	tex_alpha: []u8,
 	tex_pitch: int,
 	topleft: [2]int,
@@ -73,7 +72,7 @@ draw_alpha_tex_rect_px :: proc(
 ) {
 	px_rect: Rect2i
 	px_rect.topleft = topleft
-	px_rect.dim = tex_dim
+	px_rect.dim = tex_rect.dim
 
 	px_rect_clipped := clip_rect_to_rect(px_rect, Rect2i{{0, 0}, renderer.pixels_dim})
 	px_rect_clipped = clip_rect_to_rect(px_rect_clipped, clip_rect)
@@ -81,7 +80,7 @@ draw_alpha_tex_rect_px :: proc(
 	if is_valid_draw_rect(px_rect_clipped, renderer.pixels_dim) {
 
 		cur_px_coord := px_rect_clipped.topleft
-		tex_topleft := tex_coords + (px_rect_clipped.topleft - px_rect.topleft)
+		tex_topleft := tex_rect.topleft + (px_rect_clipped.topleft - px_rect.topleft)
 		tex_bottomright := tex_topleft + px_rect_clipped.dim
 
 		for y_coord in tex_topleft.y ..< tex_bottomright.y {
@@ -115,12 +114,11 @@ draw_glyph_px :: proc(
 	color: [4]f32,
 	clip_rect: Rect2i,
 ) {
-	tex_coords, offset := get_glyph_tex_coords_and_offset(font, glyph)
-	topleft_offset := topleft + offset
+	glyph_info := get_glyph_info(font, glyph)
+	topleft_offset := topleft + glyph_info.offset
 	draw_alpha_tex_rect_px(
 		renderer,
-		tex_coords.topleft,
-		tex_coords.dim,
+		glyph_info.tex_rect,
 		font.alphamap,
 		font.alphamap_dim.x,
 		topleft_offset,
