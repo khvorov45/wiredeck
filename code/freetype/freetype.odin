@@ -5,7 +5,7 @@ import "core:c"
 when ODIN_OS == .Windows {
 	foreign import freetype "../../build/freetype.lib"
 } else {
-	foreign import freetype "system:freetype2"
+	foreign import freetype "system:freetype"
 }
 
 Long :: c.long
