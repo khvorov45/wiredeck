@@ -41,14 +41,14 @@ init_font :: proc(font: ^Font, filepath: string) {
 	file_data, read_ok := os.read_entire_file_from_filename(filepath)
 	assert(read_ok, fmt.tprintf("failed to read font at %s", filepath))
 
-	assert(ft.New_Memory_Face(font.ft_lib, raw_data(file_data), c.int(len(file_data)), 0, &font.ft_face) == ft.Err_Ok)
-	assert(ft.Set_Pixel_Sizes(font.ft_face, 0, c.uint(font.px_height)) == ft.Err_Ok)
+	assert(ft.New_Memory_Face(font.ft_lib, raw_data(file_data), ft.Long(len(file_data)), 0, &font.ft_face) == ft.Err_Ok)
+	assert(ft.Set_Pixel_Sizes(font.ft_face, 0, u32(font.px_height)) == ft.Err_Ok)
 
 	alphamap_offset := [2]int{0, 0}
 	cur_row_max_y := 0
 	for ch_index in 0..<char_count {
 		ch := rune(int(firstchar) + ch_index)
-		ft_glyph_index := ft.Get_Char_Index(font.ft_face, c.uint(ch))
+		ft_glyph_index := ft.Get_Char_Index(font.ft_face, ft.ULong(ch))
 		ft.Load_Glyph(font.ft_face, ft_glyph_index, ft.LOAD_DEFAULT)
 		if font.ft_face.glyph.format != ft.Glyph_Format.BITMAP {
 			assert(ft.Render_Glyph(font.ft_face.glyph, ft.Render_Mode.NORMAL) == ft.Err_Ok)
