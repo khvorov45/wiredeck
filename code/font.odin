@@ -9,7 +9,8 @@ import ft "freetype"
 Font :: struct {
 	ft_lib: ft.Library,
 	ft_face: ft.Face,
-	px_height: int,
+	px_height_font: int,
+	px_height_line: int,
 	px_width: int, // NOTE(khvorov) Assume monospace for now
 	alphamap: []u8,
 	alphamap_dim: [2]int,
@@ -29,7 +30,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 	char_count := int('~') - int(firstchar) + 1
 
 	font^ = Font{
-		px_height = 14,
+		px_height_font = 14,
 		alphamap = make([]u8, alphamap_dim.y * alphamap_dim.y),
 		alphamap_dim = alphamap_dim,
 		alphamap_glyphs = make([]GlyphInfo, char_count),
@@ -42,7 +43,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 	assert(read_ok, fmt.tprintf("failed to read font at %s", filepath))
 
 	assert(ft.New_Memory_Face(font.ft_lib, raw_data(file_data), ft.Long(len(file_data)), 0, &font.ft_face) == ft.Err_Ok)
-	assert(ft.Set_Pixel_Sizes(font.ft_face, 0, u32(font.px_height)) == ft.Err_Ok)
+	assert(ft.Set_Pixel_Sizes(font.ft_face, 0, u32(font.px_height_font)) == ft.Err_Ok)
 
 	alphamap_offset := [2]int{0, 0}
 	cur_row_max_y := 0
@@ -75,7 +76,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 
 		font.alphamap_glyphs[ch_index] = GlyphInfo{
 			Rect2i{alphamap_offset, [2]int{int(bm.width), int(bm.rows)}},
-			[2]int{int(font.ft_face.glyph.bitmap_left), font.px_height - int(font.ft_face.glyph.bitmap_top)},
+			[2]int{int(font.ft_face.glyph.bitmap_left), font.px_height_font - int(font.ft_face.glyph.bitmap_top)},
 		}
 
 		alphamap_offset.x += int(bm.width)
@@ -83,6 +84,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 	}
 
 	font.px_width = int(font.ft_face.glyph.advance.x) >> 6
+	font.px_height_line = int(ft.MulFix(ft.Long(font.ft_face.height), ft.Long(font.ft_face.size.metrics.y_scale))) / 64
 }
 
 get_glyph_info :: proc(font: ^Font, glyph: u8) -> GlyphInfo {

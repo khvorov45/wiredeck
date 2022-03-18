@@ -275,7 +275,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	line_count := file.line_count
 
 	line_count_str := fmt.tprintf("%d", line_count)
-	num_rect_dim := [2]int{len(line_count_str) * ui.font.px_width, ui.font.px_height}
+	num_rect_dim := [2]int{len(line_count_str) * ui.font.px_width, ui.font.px_height_line}
 
 	text_area_rect := _take_entire_rect(last_container(ui))
 	text_rect := text_area_rect
@@ -531,7 +531,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 				UICommandTextline{num_string, current_num_topleft, line_numbers_rect, ui.theme.text_colors[.Comment]},
 			)
 			current_line_number += 1
-			current_topleft_y += ui.font.px_height
+			current_topleft_y += ui.font.px_height_line
 		}
 
 		if skip_count == 0 || current_topleft_y > text_rect_max_y {
@@ -571,7 +571,7 @@ get_button_pad :: proc(ui: ^UI) -> [2][2]int {
 
 get_button_dim :: proc(ui: ^UI, label: string = "") -> [2]int {
 	text_width := ui.font.px_width * len(label)
-	text_height := ui.font.px_height
+	text_height := ui.font.px_height_line
 	padding := get_button_pad(ui)
 	result := [2]int{
 		text_width + padding.x[0] + padding.x[1],

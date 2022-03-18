@@ -8,9 +8,6 @@ when ODIN_OS == .Windows {
 	foreign import freetype "system:freetype"
 }
 
-Long :: c.long
-ULong :: c.ulong
-
 @(link_prefix = "FT_", default_calling_convention = "c")
 foreign freetype {
 	Init_FreeType :: proc(library: ^Library) -> Error ---
@@ -67,12 +64,16 @@ foreign freetype {
 		buffer: ^byte,
 		length: ^ULong,
 	) -> Error ---
+
+	MulFix :: proc(a, b: Long) -> Long ---
 }
 
 HAS_KERNING :: proc(face: Face) -> bool {
 	return FaceFlag.KERNING in face.face_flags
 }
 
+Long :: c.long
+ULong :: c.ulong
 
 LOAD_DEFAULT :: 0
 LOAD_NO_SCALE :: 1 << 0
@@ -247,7 +248,6 @@ Handle :: distinct rawptr
 
 Library :: distinct Handle
 CharMap :: ^CharMapRec
-Size :: distinct Handle
 Face :: ^FaceRec
 GlyphSlot :: ^GlyphSlotRec
 Face_Internal :: distinct Handle
@@ -265,7 +265,7 @@ Generic :: struct {
 
 Pos :: distinct Long
 Fixed :: distinct Long
-
+UShort :: distinct c.ushort
 
 pos6_to_f32 :: proc(p: Pos) -> f32 {
 	return f32(p >> 6) + f32(p & 0b111111) / 64
@@ -449,12 +449,36 @@ FaceRec :: struct {
 	internal:            Face_Internal,
 }
 
-Render_Mode :: enum {
-    NORMAL = 0,
-    LIGHT,
-    MONO,
-    LCD,
-    LCD_V,
-    SDF,
-    MAX,
+Render_Mode :: enum c.int {
+	NORMAL = 0,
+	LIGHT,
+	MONO,
+	LCD,
+	LCD_V,
+	SDF,
+	MAX,
 }
+
+SizeRec :: struct {
+	face: Face,
+	generic: Generic,
+	metrics: Size_Metrics,
+	internal: Size_Internal,
+}
+
+Size :: distinct ^SizeRec
+
+Size_Metrics :: struct {
+	x_ppem:      UShort,
+	y_ppem:      UShort,
+	x_scale:     Fixed,
+	y_scale:     Fixed,
+	ascender:    Pos,
+	descender:   Pos,
+	height:      Pos,
+	max_advance: Pos,
+}
+
+Size_Internal :: distinct ^Size_InternalRec_
+
+Size_InternalRec_ :: struct {}
