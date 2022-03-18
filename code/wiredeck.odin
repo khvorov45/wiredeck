@@ -22,10 +22,8 @@ OpenedFile :: struct {
 	path:                 string,
 	content:              string,
 	colors:               [][4]f32, // NOTE(sen) Same length as string bytes
-
 	line_count:           int,
 	max_col_width_glyphs: int,
-
 	line_offset_lines:    int,
 	line_offset_bytes:    int,
 	col_offset:           int,
@@ -246,6 +244,7 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 				cur_col_width += 1
 			}
 		}
+
 		// NOTE(khvorov) Account for last line
 		max_col_width_glyphs = max(max_col_width_glyphs, cur_col_width)
 		line_count += 1 // NOTE(khvorov) Start counting from 1
