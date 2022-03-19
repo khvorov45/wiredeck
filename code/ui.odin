@@ -157,13 +157,79 @@ ui_end :: proc(ui: ^UI) {
 	free_all(ui.arena_allocator)
 }
 
-begin_container :: proc(ui: ^UI, dir: Direction, size_init: int) -> bool {
-	result := false
-	if rect, ok := _take_rect(last_container(ui), dir, size_init); ok {
-		append(&ui.container_stack, rect)
-		result = true
+begin_container :: proc(ui: ^UI, dir: Direction, size_init: union{int, ^int}, sep_drag_ref_init: ^Maybe(f32) = nil) {
+
+	size: int
+	sep_drag_ref: Maybe(f32)
+	resisable := false
+	switch val in size_init {
+	case int:
+		size = val
+	case ^int:
+		size = val^
+		sep_drag_ref = sep_drag_ref_init^
+		resisable = true
 	}
-	return result
+
+	if resisable {
+		sep_is_vertical := true
+		if dir == .Top || dir == .Bottom {
+			sep_is_vertical = false
+		}
+
+		size = max(size, 0)
+		last_container_rect := last_container(ui)^
+		container_rect_init := _take_rect(&last_container_rect, dir, size + ui.theme.sizes[.Separator])
+		separator_rect_init := _take_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
+
+		size = container_rect_init.dim.y
+		if sep_is_vertical {
+			size = container_rect_init.dim.x
+		}
+
+		separator_state := _get_rect_mouse_state(ui.input, separator_rect_init)
+		cur_cursor: f32
+		if sep_is_vertical {
+			cur_cursor = f32(ui.input.cursor_pos.x)
+		} else {
+			cur_cursor = f32(ui.input.cursor_pos.y)
+		}
+
+		if sep_drag_ref == nil {
+			if separator_state == .Pressed {
+				sep_drag_ref = cur_cursor
+			}
+		} else {
+			if ui.input.keys[.MouseLeft].ended_down {
+				delta := cur_cursor - sep_drag_ref.(f32)
+				max_size := last_container(ui).dim.y
+				if sep_is_vertical {
+					max_size = last_container(ui).dim.x
+				}
+				new_size := clamp(size + int(delta), 0, max_size - ui.theme.sizes[.Separator])
+				delta = f32(new_size - size)
+				sep_drag_ref = sep_drag_ref.(f32) + delta
+				size = new_size
+			} else {
+				sep_drag_ref = nil
+			}
+		}
+	}
+
+	rect: Rect2i
+	if resisable {
+		rect = _take_rect(last_container(ui), dir, size + ui.theme.sizes[.Separator]) 
+		sep_rect := _take_rect(&rect, dir_opposite(dir), ui.theme.sizes[.Separator])
+		append(ui.current_cmd_buffer, UICommandRect{sep_rect, ui.theme.colors[.Border]})
+	} else {
+		rect = _take_rect(last_container(ui), dir, size) 
+	}
+	append(&ui.container_stack, rect)
+
+	if resisable {
+		size_init.(^int)^ = size
+		sep_drag_ref_init^ = sep_drag_ref
+	}
 }
 
 end_container :: proc(ui: ^UI) {
@@ -239,33 +305,32 @@ button :: proc(
 		dir = .Top
 	}
 
-	if rect, ok := _take_rect(last_container(ui), dir, size); ok {
-		ui.last_element_rect = rect
-		if process_input {
-			state = _get_rect_mouse_state(ui.input, rect)
-		}
-
-		element_slack := rect.dim - element_dim
-		element_topleft := rect.topleft
-		if text_align == .Center {
-			element_topleft += element_slack / 2
-		} else if text_align == .End {
-			element_topleft += element_slack
-		}
-
-		text_topleft := element_topleft
-		text_topleft.x += padding.x[0]
-		text_topleft.y += padding.y[0]
-
-		if state >= .Hovered || active {
-			append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundHovered]})
-		}
-
-		append(
-			ui.current_cmd_buffer,
-			UICommandTextline{label_str, text_topleft, rect, ui.theme.text_colors[.Normal]},
-		)
+	rect := _take_rect(last_container(ui), dir, size)
+	ui.last_element_rect = rect
+	if process_input {
+		state = _get_rect_mouse_state(ui.input, rect)
 	}
+
+	element_slack := rect.dim - element_dim
+	element_topleft := rect.topleft
+	if text_align == .Center {
+		element_topleft += element_slack / 2
+	} else if text_align == .End {
+		element_topleft += element_slack
+	}
+
+	text_topleft := element_topleft
+	text_topleft.x += padding.x[0]
+	text_topleft.y += padding.y[0]
+
+	if state >= .Hovered || active {
+		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundHovered]})
+	}
+
+	append(
+		ui.current_cmd_buffer,
+		UICommandTextline{label_str, text_topleft, rect, ui.theme.text_colors[.Normal]},
+	)
 
 	return state
 }
@@ -280,6 +345,8 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	text_area_rect := _take_entire_rect(last_container(ui))
 	text_rect := text_area_rect
 	text_rect.dim -= ui.theme.sizes[.ScrollbarWidth]
+	text_rect.dim.x = max(text_rect.dim.x, 0)
+	text_rect.dim.y = max(text_rect.dim.y, 0)
 	text_rect_max_y := text_rect.topleft.y + text_rect.dim.y
 
 	line_numbers_rect := text_rect
@@ -545,22 +612,6 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	file.col_offset = col_offset_bytes
 }
 
-separator :: proc(ui: ^UI, orientation: Orientation) {
-	size := ui.theme.sizes[.Separator]
-
-	dir: Direction
-	switch orientation {
-	case .Horizontal:
-		dir = .Top
-	case .Vertical:
-		dir = .Left
-	}
-
-	if rect, ok := _take_rect(last_container(ui), dir, size); ok {
-		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Border]})
-	}
-}
-
 get_button_pad :: proc(ui: ^UI) -> [2][2]int {
 	pad := ui.theme.sizes[.ButtonPadding]
 	padding: [2][2]int
@@ -593,7 +644,50 @@ last_container :: proc(ui: ^UI) -> ^Rect2i {
 	return result
 }
 
-_take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i, success: bool) {
+dir_opposite :: proc(dir: Direction) -> Direction {
+	result: Direction
+	switch dir {
+	case .Top:
+		result = .Bottom
+	case .Bottom:
+		result = .Top
+	case .Left:
+		result = .Right
+	case .Right:
+		result = .Left
+	}
+	return result
+}
+
+_take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> Rect2i {
+	rect := _peek_rect(from, dir, size_init)
+
+	size: int
+	switch dir {
+	case .Top, .Bottom:
+		size = rect.dim.y
+	case .Left, .Right:
+		size = rect.dim.x
+	}
+
+	#partial switch dir {
+	case .Top:
+		from.topleft.y += size
+	case .Left:
+		from.topleft.x += size
+	}
+
+	switch dir {
+	case .Top, .Bottom:
+		from.dim.y -= size
+	case .Left, .Right:
+		from.dim.x -= size
+	}
+
+	return rect
+}
+
+_peek_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i) {
 
 	size: int
 	switch dir {
@@ -603,43 +697,25 @@ _take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect
 		size = clamp(size_init, 0, from.dim.x)
 	}
 
-	if size > 0 {
-		switch dir {
-		case .Top, .Left:
-			rect.topleft = from.topleft
-		case .Bottom:
-			rect.topleft.x = from.topleft.x
-			rect.topleft.y = from.topleft.y + (from.dim.y - size)
-		case .Right:
-			rect.topleft.x = from.topleft.x + (from.dim.x - size)
-			rect.topleft.y = from.topleft.y
-		}
-
-		switch dir {
-		case .Top, .Bottom:
-			rect.dim = [2]int{from.dim.x, size}
-		case .Left, .Right:
-			rect.dim = [2]int{size, from.dim.y}
-		}
-
-		#partial switch dir {
-		case .Top:
-			from.topleft.y += size
-		case .Left:
-			from.topleft.x += size
-		}
-
-		switch dir {
-		case .Top, .Bottom:
-			from.dim.y -= size
-		case .Left, .Right:
-			from.dim.x -= size
-		}
-
-		success = true
+	switch dir {
+	case .Top, .Left:
+		rect.topleft = from.topleft
+	case .Bottom:
+		rect.topleft.x = from.topleft.x
+		rect.topleft.y = from.topleft.y + (from.dim.y - size)
+	case .Right:
+		rect.topleft.x = from.topleft.x + (from.dim.x - size)
+		rect.topleft.y = from.topleft.y
 	}
 
-	return rect, success
+	switch dir {
+	case .Top, .Bottom:
+		rect.dim = [2]int{from.dim.x, size}
+	case .Left, .Right:
+		rect.dim = [2]int{size, from.dim.y}
+	}
+
+	return rect
 }
 
 _take_entire_rect :: proc(from: ^Rect2i) -> Rect2i {

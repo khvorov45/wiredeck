@@ -10,6 +10,8 @@ State :: struct {
 	top_bar_pending_close: bool,
 	opened_files:          [dynamic]OpenedFile,
 	editing:               Maybe(int),
+	sidebar_width:         int,
+	sidebar_drag_ref:      Maybe(f32),
 }
 
 TopBarMenu :: enum {
@@ -51,6 +53,7 @@ main :: proc() {
 	open_file(&state, "build.bat", ui.theme.text_colors)
 	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c", ui.theme.text_colors)
 	state.editing = 0
+	state.sidebar_width = 150
 
 	for window.is_running {
 
@@ -79,7 +82,8 @@ main :: proc() {
 		ui_begin(&ui)
 
 		// NOTE(khvorov) Top bar
-		if begin_container(&ui, .Top, get_button_dim(&ui).y) {
+		{
+			begin_container(&ui, .Top, get_button_dim(&ui).y)
 
 			ui.current_layout = .Horizontal
 
@@ -165,13 +169,21 @@ main :: proc() {
 		}
 
 		// NOTE(khvorov) Bottom bar
-		if begin_container(&ui, .Bottom, get_button_dim(&ui).y) {
+		{
+			begin_container(&ui, .Bottom, get_button_dim(&ui).y)
 			ui.current_layout = .Horizontal
 			end_container(&ui)
 		}
 
+		should_capture_mouse := false
+
 		// NOTE(khvorov) Sidebar
-		if begin_container(&ui, .Left, 153) {
+		{
+			begin_container(&ui, .Left, &state.sidebar_width, &state.sidebar_drag_ref)
+			if state.sidebar_drag_ref != nil {
+				should_capture_mouse = true
+			}
+
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {
@@ -183,17 +195,19 @@ main :: proc() {
 			end_container(&ui)
 		}
 
-		separator(&ui, .Vertical)
-
 		// NOTE(khvorov) Editors
 		if editing, ok := state.editing.(int); ok {
 			file := &state.opened_files[editing]
 			text_area(&ui, &state.opened_files[editing])
 			if file.cursor_scroll_ref.y != nil || file.cursor_scroll_ref.x != nil {
-				set_mouse_capture(&window, true)
-			} else {
-				set_mouse_capture(&window, false)
+				should_capture_mouse = true
 			}
+		}
+
+		if should_capture_mouse {
+			set_mouse_capture(&window, true)
+		} else {
+			set_mouse_capture(&window, false)
 		}
 
 		ui_end(&ui)
