@@ -5,19 +5,21 @@ import "core:fmt"
 import "core:mem"
 
 UI :: struct {
-	input:              ^Input,
-	font:               ^Font,
-	theme:              Theme,
-	total_dim:          [2]int,
-	current_layout:     Orientation,
-	container_stack:    [dynamic]Rect2i,
-	commands:           [dynamic]UICommand,
-	last_element_rect:  Rect2i,
-	floating:           Maybe(Rect2i),
-	floating_cmd:       [dynamic]UICommand,
-	current_cmd_buffer: ^[dynamic]UICommand,
-	arena:              mem.Arena,
-	arena_allocator:    mem.Allocator,
+	input:                ^Input,
+	font:                 ^Font,
+	theme:                Theme,
+	total_dim:            [2]int,
+	current_layout:       Orientation,
+	container_stack:      [dynamic]Rect2i,
+	commands:             [dynamic]UICommand,
+	last_element_rect:    Rect2i,
+	floating:             Maybe(Rect2i),
+	floating_cmd:         [dynamic]UICommand,
+	current_cmd_buffer:   ^[dynamic]UICommand,
+	arena:                mem.Arena,
+	arena_allocator:      mem.Allocator,
+	should_capture_mouse: bool,
+	req_cursor:           CursorKind,
 }
 
 Theme :: struct {
@@ -98,7 +100,7 @@ Align :: enum {
 	End,
 }
 
-init_ui :: proc(ui: ^UI, width: int, height: int, input: ^Input, font: ^Font) {
+init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
 
 	theme: Theme
 
@@ -148,6 +150,8 @@ ui_begin :: proc(ui: ^UI) {
 	ui.floating = nil
 	clear(&ui.floating_cmd)
 	ui.current_cmd_buffer = &ui.commands
+	ui.should_capture_mouse = false
+	ui.req_cursor = .Normal
 }
 
 ui_end :: proc(ui: ^UI) {
@@ -214,21 +218,32 @@ begin_container :: proc(ui: ^UI, dir: Direction, size_init: union{int, ^int}, se
 				sep_drag_ref = nil
 			}
 		}
+
+		if sep_drag_ref != nil || separator_state > .Normal {
+			ui.req_cursor = .SizeNS
+			if sep_is_vertical {
+				ui.req_cursor = .SizeWE
+			}
+		}
 	}
 
 	rect: Rect2i
 	if resisable {
-		rect = _take_rect(last_container(ui), dir, size + ui.theme.sizes[.Separator]) 
+		rect = _take_rect(last_container(ui), dir, size + ui.theme.sizes[.Separator])
 		sep_rect := _take_rect(&rect, dir_opposite(dir), ui.theme.sizes[.Separator])
 		append(ui.current_cmd_buffer, UICommandRect{sep_rect, ui.theme.colors[.Border]})
 	} else {
-		rect = _take_rect(last_container(ui), dir, size) 
+		rect = _take_rect(last_container(ui), dir, size)
 	}
 	append(&ui.container_stack, rect)
 
 	if resisable {
 		size_init.(^int)^ = size
 		sep_drag_ref_init^ = sep_drag_ref
+
+		if sep_drag_ref != nil {
+			ui.should_capture_mouse = true
+		}
 	}
 }
 
@@ -610,6 +625,10 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	file.line_offset_bytes = byte_offset
 	file.cursor_scroll_ref = cursor_scroll_ref
 	file.col_offset = col_offset_bytes
+
+	if cursor_scroll_ref.y != nil || cursor_scroll_ref.x != nil {
+		ui.should_capture_mouse = true
+	}
 }
 
 get_button_pad :: proc(ui: ^UI) -> [2][2]int {

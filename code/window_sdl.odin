@@ -1,5 +1,9 @@
 package wiredeck
 
+import "core:fmt"
+
+when ODIN_OS == .Windows do import win "core:sys/win32"
+
 import sdl "vendor:sdl2"
 
 PlatformWindow :: struct {
@@ -7,6 +11,7 @@ PlatformWindow :: struct {
 	renderer:    ^sdl.Renderer,
 	texture:     ^sdl.Texture,
 	texture_dim: [2]int,
+	cursors:     [CursorKind]^sdl.Cursor,
 }
 
 init_window :: proc(window: ^Window, title: string, width: int, height: int) {
@@ -42,19 +47,49 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 	texture_dim := [2]int{width, height}
 	assert(texture != nil)
 
+	cursors: [CursorKind]^sdl.Cursor
+	for cursor_kind in CursorKind {
+		sdl_cursor_kind: sdl.SystemCursor
+		switch cursor_kind {
+		case .Normal: sdl_cursor_kind = .ARROW
+		case .SizeWE: sdl_cursor_kind = .SIZEWE
+		case .SizeNS: sdl_cursor_kind = .SIZENS
+		}
+		cursors[cursor_kind] = sdl.CreateSystemCursor(sdl_cursor_kind)
+	}
+
 	window^ = Window{
 		true,
 		false,
 		true,
 		false,
 		[2]int{width, height},
-		{sdl_window, renderer, texture, texture_dim},
+		{sdl_window, renderer, texture, texture_dim, cursors},
 	}
 }
 
 set_mouse_capture :: proc(window: ^Window, state: bool) {
 	sdl.CaptureMouse(sdl.bool(state))
+
+	// NOTE(khvorov) Buggy SDL only half-captures the mouse on windows.
+	// If I don't do this the cursor will flicker between what I set it to
+	// and what other windows want to set it to (e.g. b/w arrow and resize)
+	// when the cursor is outside my window.
+	when ODIN_OS == .Windows {	
+		sys_info: sdl.SysWMinfo
+		sdl.GetWindowWMInfo(window.platform.window, &sys_info)
+		if state {
+			win.set_capture(win.Hwnd(sys_info.info.win.window))
+		} else {
+			win.release_capture()
+		}
+	}
+
 	window.is_mouse_captured = state
+}
+
+set_cursor :: proc(window: ^Window, cursor: CursorKind) {
+	sdl.SetCursor(window.platform.cursors[cursor])
 }
 
 _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
@@ -139,7 +174,6 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 
 		case .F4:
 			record_key(input, .F4, ended_down)
-
 		}
 
 	case .WINDOWEVENT:

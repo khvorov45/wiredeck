@@ -8,3 +8,9 @@ Window :: struct {
 	dim:               [2]int,
 	platform:          PlatformWindow,
 }
+
+CursorKind :: enum {
+	Normal,
+	SizeWE,
+	SizeNS,
+}

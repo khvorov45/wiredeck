@@ -175,15 +175,9 @@ main :: proc() {
 			end_container(&ui)
 		}
 
-		should_capture_mouse := false
-
 		// NOTE(khvorov) Sidebar
 		{
 			begin_container(&ui, .Left, &state.sidebar_width, &state.sidebar_drag_ref)
-			if state.sidebar_drag_ref != nil {
-				should_capture_mouse = true
-			}
-
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {
@@ -199,16 +193,16 @@ main :: proc() {
 		if editing, ok := state.editing.(int); ok {
 			file := &state.opened_files[editing]
 			text_area(&ui, &state.opened_files[editing])
-			if file.cursor_scroll_ref.y != nil || file.cursor_scroll_ref.x != nil {
-				should_capture_mouse = true
-			}
+			
 		}
 
-		if should_capture_mouse {
+		if ui.should_capture_mouse {
 			set_mouse_capture(&window, true)
 		} else {
 			set_mouse_capture(&window, false)
 		}
+
+		set_cursor(&window, ui.req_cursor)
 
 		ui_end(&ui)
 
