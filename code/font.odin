@@ -2,7 +2,6 @@ package wiredeck
 
 import "core:os"
 import "core:fmt"
-import "core:c"
 
 import ft "freetype"
 

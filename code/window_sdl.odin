@@ -1,7 +1,5 @@
 package wiredeck
 
-import "core:fmt"
-
 when ODIN_OS == .Windows do import win "core:sys/win32"
 
 import sdl "vendor:sdl2"
@@ -24,7 +22,7 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 		sdl.WINDOWPOS_CENTERED,
 		i32(width),
 		i32(height),
-		sdl.WINDOW_HIDDEN,
+		sdl.WINDOW_HIDDEN | sdl.WINDOW_RESIZABLE,
 	)
 	assert(sdl_window != nil)
 
@@ -189,6 +187,9 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 			if !window.is_mouse_captured {
 				input.cursor_pos = -1
 			}
+
+		case .RESIZED:
+			window.dim = [2]int{int(event.window.data1), int(event.window.data2)}
 		}
 
 	case .MOUSEBUTTONDOWN, .MOUSEBUTTONUP:
@@ -230,6 +231,19 @@ wait_for_input :: proc(window: ^Window, input: ^Input) {
 }
 
 display_pixels :: proc(window: ^Window, pixels: []u32, pixels_dim: [2]int) {
+
+	if pixels_dim != window.platform.texture_dim {
+		sdl.DestroyTexture(window.platform.texture)
+		window.platform.texture = sdl.CreateTexture(
+			window.platform.renderer,
+			u32(sdl.PixelFormatEnum.ARGB8888),
+			sdl.TextureAccess.STREAMING,
+			i32(pixels_dim.x),
+			i32(pixels_dim.y),
+		)
+		assert(window.platform.texture != nil)
+		window.platform.texture_dim = pixels_dim
+	}
 
 	assert(sdl.RenderClear(window.platform.renderer) == 0)
 

@@ -17,7 +17,14 @@ init_renderer :: proc(renderer: ^Renderer, width, height: int) {
 	}
 }
 
-clear_buffers :: proc(renderer: ^Renderer, color: [4]f32) {
+clear_buffers :: proc(renderer: ^Renderer, color: [4]f32, dim: [2]int) {
+	if renderer.pixels_dim != dim {
+		new_pixels := make([]u32, dim.x * dim.y)
+		delete(renderer.pixels)
+		renderer.pixels = new_pixels
+		renderer.pixels_dim = dim
+	}
+
 	color32 := color_to_u32argb(color)
 	for pixel in &renderer.pixels {
 		pixel = color32

@@ -3,7 +3,6 @@ package wiredeck
 import "core:fmt"
 import "core:strings"
 import "core:os"
-import "core:unicode"
 
 State :: struct {
 	top_bar_open_menu:     TopBarMenu,
@@ -79,6 +78,7 @@ main :: proc() {
 		// NOTE(khvorov) UI
 		//
 
+		ui.total_dim = window.dim
 		ui_begin(&ui)
 
 		// NOTE(khvorov) Top bar
@@ -193,7 +193,6 @@ main :: proc() {
 		if editing, ok := state.editing.(int); ok {
 			file := &state.opened_files[editing]
 			text_area(&ui, &state.opened_files[editing])
-			
 		}
 
 		if ui.should_capture_mouse {
@@ -210,7 +209,7 @@ main :: proc() {
 		// NOTE(khvorov) Render
 		//
 
-		clear_buffers(&renderer, ui.theme.colors[.Background])
+		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
 
 		for cmd_ui in ui.commands {
 			switch cmd in cmd_ui {
