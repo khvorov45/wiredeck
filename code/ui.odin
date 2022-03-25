@@ -100,6 +100,15 @@ Align :: enum {
 	End,
 }
 
+ScrollDiscrete :: struct {
+	inc: f32,
+	range: int,
+	thumb_size: int,
+	total_step_count: int,
+	track: Rect2i,
+	orientation: Orientation,
+}
+
 init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
 
 	theme: Theme
@@ -369,48 +378,43 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	text_rect.dim.x -= line_numbers_rect.dim.x
 	text_rect.topleft.x += line_numbers_rect.dim.x
 
-	cursor_scroll_ref := file.cursor_scroll_ref
-
-	scrollbar_v_rect := text_rect
-	scrollbar_v_rect.topleft.x += text_rect.dim.x
-	scrollbar_v_rect.dim.x = ui.theme.sizes[.ScrollbarWidth]
-	if file.cursor_scroll_ref.y != nil {
-		cursor_scroll_ref.y = clamp(
-			file.cursor_scroll_ref.y.(f32),
-			f32(scrollbar_v_rect.topleft.y),
-			f32(scrollbar_v_rect.topleft.y + scrollbar_v_rect.dim.y),
-		)
+	// NOTE(khvorov) Scrollbars
+	scrollbar_tracks := _position_scrollbar_tracks_outside(text_rect, ui.theme.sizes[.ScrollbarWidth])
+	for track in scrollbar_tracks {
+		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
 	}
+	cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
 
-	scrollbar_h_rect := text_rect
-	scrollbar_h_rect.topleft.y += text_rect.dim.y
-	scrollbar_h_rect.dim.y = ui.theme.sizes[.ScrollbarWidth]
+	scroll_discrete := _get_scroll_discrete2(
+		scrollbar_tracks,
+		[2]f32{f32(ui.theme.sizes[.ScrollbarIncPerCol]), f32(ui.theme.sizes[.ScrollbarIncPerLine])},
+		[2]int{file.max_col_width_glyphs - text_rect.dim.x / ui.font.px_width, line_count - 1},
+		ui.theme.sizes[.ScrollbarThumbLengthMin],
+	)
 
-	// NOTE(khvorov) Vertical Scrollbar
-	scrollbar_v_inc_per_line := f32(ui.theme.sizes[.ScrollbarIncPerLine])
-	scrollbar_v_range := (line_count - 1) * int(scrollbar_v_inc_per_line)
-	scrollbar_v_length := scrollbar_v_rect.dim.y - scrollbar_v_range
-	if scrollbar_v_length < ui.theme.sizes[.ScrollbarThumbLengthMin] {
-		scrollbar_v_length = ui.theme.sizes[.ScrollbarThumbLengthMin]
-		scrollbar_v_range = scrollbar_v_rect.dim.y - scrollbar_v_length
-		if line_count > 1 {
-			scrollbar_v_inc_per_line = f32(scrollbar_v_range) / f32(line_count - 1)
-		}
-	}
-	scrollbar_v_top_start := scrollbar_v_rect.topleft.y
-	scrollbar_v_top_pos := scrollbar_v_top_start
+	line_offset, line_offset_delta :=
+		_get_scroll_offset_and_delta(ui.input, cursor_scroll_ref.y, file.line_offset_lines, scroll_discrete.y)
 
-	// NOTE(sen) Process line offset inputs
-	line_offset_delta := 0
-	if cursor_scroll_ref.y == nil {
-		line_offset_delta = ui.input.scroll.y
-	} else {
-		scroll_delta_px := f32(ui.input.cursor_pos.y) - cursor_scroll_ref.y.(f32)
-		line_offset_delta = int(scroll_delta_px / scrollbar_v_inc_per_line)
-	}
-	old_line_offset := clamp(file.line_offset_lines, 0, line_count - 1)
-	line_offset := clamp(old_line_offset + line_offset_delta, 0, line_count - 1)
-	line_offset_delta = line_offset - old_line_offset
+	col_offset, col_offset_delta :=
+		_get_scroll_offset_and_delta(ui.input, cursor_scroll_ref.x, file.col_offset, scroll_discrete.x)
+
+	scrollbar_v_thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_discrete.y)
+	scrollbar_v_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_v_thumb_rect)
+	scrollbar_v_thumb_color := _get_scroll_thumb_col(ui, scrollbar_v_thumb_state)
+	append(ui.current_cmd_buffer, UICommandRect{scrollbar_v_thumb_rect, scrollbar_v_thumb_color})
+
+	scrollbar_h_thumb_rect := _get_scroll_thumb_rect(col_offset, scroll_discrete.x)
+	scrollbar_h_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_h_thumb_rect)
+	scrollbar_h_thumb_color := _get_scroll_thumb_col(ui, scrollbar_h_thumb_state)
+	append(ui.current_cmd_buffer, UICommandRect{scrollbar_h_thumb_rect, scrollbar_h_thumb_color})
+
+	cursor_scroll_ref.y = _update_scroll_ref(
+		ui.input, scrollbar_v_thumb_state, cursor_scroll_ref.y, line_offset_delta, scroll_discrete.y,
+	)
+
+	cursor_scroll_ref.x = _update_scroll_ref(
+		ui.input, scrollbar_h_thumb_state, cursor_scroll_ref.x, col_offset_delta, scroll_discrete.x,
+	)
 
 	// NOTE(sen) Figure out byte offset
 	byte_offset := file.line_offset_bytes
@@ -461,96 +465,6 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	}
 	byte_offset = clamp(byte_offset, 0, len(file.content))
 
-	// NOTE(sen) Position vertical scrollbar thumb
-	if line_count > 1 {
-		scrollbar_v_top_pos = int(
-			f32(line_offset) / f32(line_count - 1) * f32(scrollbar_v_range) + f32(scrollbar_v_top_start),
-		)
-	}
-	scrollbar_v_thumb_rect := scrollbar_v_rect
-	scrollbar_v_thumb_rect.topleft.y = scrollbar_v_top_pos
-	scrollbar_v_thumb_rect.dim.y = scrollbar_v_length
-	scrollbar_v_thumb_color := ui.theme.colors[.ScrollbarThumb]
-	scrollbar_v_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_v_thumb_rect)
-	if scrollbar_v_thumb_state > .Normal {
-		scrollbar_v_thumb_color = ui.theme.colors[.ScrollbarThumbHovered]
-	}
-	append(ui.current_cmd_buffer, UICommandRect{scrollbar_v_thumb_rect, scrollbar_v_thumb_color})
-
-	// NOTE(sen) Vertical scroll state input check
-	if scrollbar_v_thumb_state == .Pressed && cursor_scroll_ref.y == nil {
-		cursor_scroll_ref.y = f32(ui.input.cursor_pos.y)
-	} else if cursor_scroll_ref.y != nil {
-		if !ui.input.keys[.MouseLeft].ended_down {
-			cursor_scroll_ref.y = nil
-		} else {
-			cursor_scroll_ref.y = cursor_scroll_ref.y.(f32) + f32(line_offset_delta) * scrollbar_v_inc_per_line
-		}
-	}
-
-	// NOTE(khvorov) Figure out max column offset
-	max_col_width_px := file.max_col_width_glyphs * ui.font.px_width
-	max_col_slack_px := max(max_col_width_px - text_rect.dim.x, 0)
-	max_col_slack_bytes := max_col_slack_px / ui.font.px_width
-	if max_col_slack_px > 0 {
-		max_col_slack_bytes += 1
-	}
-
-	// NOTE(khvorov) Horizontal scrollbar
-	scrollbar_h_inc_per_col := f32(ui.theme.sizes[.ScrollbarIncPerCol])
-	scrollbar_h_range := max_col_slack_bytes * int(scrollbar_h_inc_per_col)
-	scrollbar_h_length := scrollbar_h_rect.dim.x - scrollbar_h_range
-	if scrollbar_h_length < ui.theme.sizes[.ScrollbarThumbLengthMin] {
-		scrollbar_h_length = ui.theme.sizes[.ScrollbarThumbLengthMin]
-		scrollbar_h_range = scrollbar_h_rect.dim.x - scrollbar_h_length
-		if max_col_slack_bytes > 0 {
-			scrollbar_h_inc_per_col = f32(scrollbar_h_range) / f32(max_col_slack_bytes)
-		}
-	}
-	scrollbar_h_left_start := scrollbar_h_rect.topleft.x
-	scrollbar_h_left_pos := scrollbar_h_left_start
-
-	// NOTE(khvorov) Horizontal scroll inputs
-	col_offset_delta := 0
-	if cursor_scroll_ref.x == nil {
-		col_offset_delta = ui.input.scroll.x
-	} else {
-		scroll_delta_px := f32(ui.input.cursor_pos.x) - cursor_scroll_ref.x.(f32)
-		col_offset_delta = int(scroll_delta_px / scrollbar_h_inc_per_col)
-	}
-	old_col_offset_bytes := clamp(file.col_offset, 0, max_col_slack_bytes)
-	col_offset_bytes := clamp(old_col_offset_bytes + col_offset_delta, 0, max_col_slack_bytes)
-	col_offset_px := col_offset_bytes * ui.font.px_width
-	col_offset_delta = col_offset_bytes - old_col_offset_bytes
-
-	if max_col_slack_bytes > 0 {
-		scrollbar_h_left_pos = int(
-			f32(col_offset_bytes) / f32(max_col_slack_bytes) * f32(scrollbar_h_range) + f32(scrollbar_h_left_start),
-		)
-	}
-
-	// NOTE(sen) Position horizontal scrollbar thumb
-	scrollbar_h_thumb_rect := scrollbar_h_rect
-	scrollbar_h_thumb_rect.topleft.x = scrollbar_h_left_pos
-	scrollbar_h_thumb_rect.dim.x = scrollbar_h_length
-	scrollbar_h_thumb_color := ui.theme.colors[.ScrollbarThumb]
-	scrollbar_h_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_h_thumb_rect)
-	if scrollbar_h_thumb_state > .Normal {
-		scrollbar_h_thumb_color = ui.theme.colors[.ScrollbarThumbHovered]
-	}
-	append(ui.current_cmd_buffer, UICommandRect{scrollbar_h_thumb_rect, scrollbar_h_thumb_color})
-
-	// NOTE(sen) Horizontal scroll state input check
-	if scrollbar_h_thumb_state == .Pressed && cursor_scroll_ref.x == nil {
-		cursor_scroll_ref.x = f32(ui.input.cursor_pos.x)
-	} else if cursor_scroll_ref.x != nil {
-		if !ui.input.keys[.MouseLeft].ended_down {
-			cursor_scroll_ref.x = nil
-		} else {
-			cursor_scroll_ref.x = cursor_scroll_ref.x.(f32) + f32(col_offset_delta) * scrollbar_h_inc_per_col
-		}
-	}
-
 	// NOTE(khvorov) Text content
 	assert(len(file.content) == len(file.colors))
 	str_left := file.content[byte_offset:]
@@ -570,7 +484,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		line := str_left[:line_end_index]
 		line_col := colors_left[:line_end_index]
 
-		current_line_topleft := [2]int{current_topleft_x_line - col_offset_px, current_topleft_y}
+		current_line_topleft := [2]int{current_topleft_x_line - col_offset * ui.font.px_width, current_topleft_y}
 		append(
 			ui.current_cmd_buffer,
 			UICommandTextline{line, current_line_topleft, text_rect, line_col},
@@ -624,7 +538,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	file.line_offset_lines = line_offset
 	file.line_offset_bytes = byte_offset
 	file.cursor_scroll_ref = cursor_scroll_ref
-	file.col_offset = col_offset_bytes
+	file.col_offset = col_offset
 
 	if cursor_scroll_ref.y != nil || cursor_scroll_ref.x != nil {
 		ui.should_capture_mouse = true
@@ -675,6 +589,11 @@ dir_opposite :: proc(dir: Direction) -> Direction {
 	case .Right:
 		result = .Left
 	}
+	return result
+}
+
+get_rect_center_f32 :: proc(rect: Rect2i) -> [2]f32 {
+	result := [2]f32{f32(rect.topleft.x), f32(rect.topleft.y)} + 0.5 * [2]f32{f32(rect.dim.x), f32(rect.dim.y)}
 	return result
 }
 
@@ -775,4 +694,190 @@ _cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32) {
 	append(ui.current_cmd_buffer, UICommandRect{bottom, color})
 	append(ui.current_cmd_buffer, UICommandRect{left, color})
 	append(ui.current_cmd_buffer, UICommandRect{right, color})
+}
+
+_position_scrollbar_tracks_outside :: proc(rect: Rect2i, size: int) -> (tracks: [2]Rect2i) {
+	tracks = rect
+	tracks.x.topleft.y += rect.dim.y
+	tracks.x.dim.y = size
+	tracks.y.topleft.x += rect.dim.x
+	tracks.y.dim.x = size
+	return tracks
+}
+
+_clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -> [2]Maybe(f32) {
+	refs := refs_init
+
+	if refs_init.x != nil {
+		refs.x = clamp(
+			refs_init.x.(f32),
+			f32(scroll_tracks.x.topleft.x),
+			f32(scroll_tracks.x.topleft.x + scroll_tracks.x.dim.x),
+		)
+	}
+
+	if refs_init.y != nil {
+		refs.y = clamp(
+			refs_init.y.(f32),
+			f32(scroll_tracks.y.topleft.y),
+			f32(scroll_tracks.y.topleft.y + scroll_tracks.y.dim.y),
+		)
+	}
+
+	return refs
+}
+
+_get_scroll_discrete :: proc(
+	track: Rect2i, orientation: Orientation, inc_init: f32, total_step_count, thumb_size_min: int,
+) -> ScrollDiscrete {
+	total_step_count := max(total_step_count, 0)
+	inc := inc_init
+	range := total_step_count * int(inc)
+	track_len := _get_scroll_track_len(track, orientation)
+	thumb_size := track_len - range
+	if thumb_size < thumb_size_min {
+		thumb_size = thumb_size_min
+		range = track_len - thumb_size
+		if total_step_count > 0 {
+			inc = f32(range) / f32(total_step_count)
+		}
+	}
+	result := ScrollDiscrete{inc, range, thumb_size, total_step_count, track, orientation}
+	return result
+}
+
+_get_scroll_track_len :: proc(track: Rect2i, orientation: Orientation) -> int {
+	result: int
+	switch orientation {
+	case .Horizontal: result = track.dim.x
+	case .Vertical: result = track.dim.y
+	}
+	return result
+}
+
+_get_scroll_track_start :: proc(track: Rect2i, orientation: Orientation) -> int {
+	result: int
+	switch orientation {
+	case .Horizontal: result = track.topleft.x
+	case .Vertical: result = track.topleft.y
+	}
+	return result
+}
+
+_get_scroll_discrete2 :: proc(
+	tracks: [2]Rect2i, inc_init: [2]f32, total_step_count: [2]int, thumb_size_min: int,
+) -> (result: [2]ScrollDiscrete) {
+	result.x = _get_scroll_discrete(tracks.x, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min)
+	result.y = _get_scroll_discrete(tracks.y, .Vertical, inc_init.y, total_step_count.y, thumb_size_min)
+	return result
+}
+
+_get_scroll_discrete_start :: proc(offset_init: int, settings: ScrollDiscrete) -> int {
+	offset := _clamp_scroll_offset(offset_init, settings)
+	track_start := _get_scroll_track_start(settings.track, settings.orientation)
+	result := track_start
+	if settings.total_step_count > 0 {
+		result = int(
+			f32(offset) / f32(settings.total_step_count) * f32(settings.range) + f32(track_start),
+		)
+	}
+	return result
+}
+
+_clamp_scroll_offset :: proc(offset_init: int, settings: ScrollDiscrete) -> int {
+	offset := clamp(offset_init, 0, settings.total_step_count)
+	return offset
+}
+
+_get_scroll_thumb_rect :: proc(offset: int, settings: ScrollDiscrete) -> Rect2i {
+	rect := settings.track
+	start := _get_scroll_discrete_start(offset, settings)
+	switch settings.orientation {
+	case .Horizontal:
+		rect.topleft.x = start
+		rect.dim.x = settings.thumb_size
+	case .Vertical:
+		rect.topleft.y = start
+		rect.dim.y = settings.thumb_size
+	}
+	return rect
+}
+
+_get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollDiscrete) -> int {
+	cursor_pos: int
+	switch settings.orientation {
+	case .Horizontal: cursor_pos = input.cursor_pos.x
+	case .Vertical: cursor_pos = input.cursor_pos.y
+	}
+	return cursor_pos
+}
+
+_get_scroll_offset_and_delta :: proc(
+	input: ^Input, scroll_ref: Maybe(f32), old_offset: int, settings: ScrollDiscrete,
+) -> (offset: int, delta: int) {
+
+	old_offset := _clamp_scroll_offset(old_offset, settings)
+	old_thumb_rect := _get_scroll_thumb_rect(old_offset, settings)
+	old_thumb_state := _get_rect_mouse_state(input, old_thumb_rect)
+
+	offset_delta := 0
+	rect_state := _get_rect_mouse_state(input, settings.track)
+
+	cursor_pos := _get_scroll_cursor_pos(input, settings)
+
+	// NOTE(sen) Drag the scroll thumb
+	if scroll_ref != nil {
+		scroll_delta_px := f32(cursor_pos) - scroll_ref.(f32)
+		offset_delta = int(scroll_delta_px / settings.inc)
+
+	// NOTE(sen) Click on track
+	} else if old_thumb_state == .Normal && rect_state == .Pressed {
+		center2 := get_rect_center_f32(old_thumb_rect)
+		center: f32
+		switch settings.orientation {
+		case .Horizontal: center = center2.x
+		case .Vertical: center = center2.y
+		}
+		scroll_delta_px := f32(cursor_pos) - center
+		offset_delta = int(scroll_delta_px / settings.inc)
+
+	// NOTE(sen) Scroll wheel
+	} else {
+		switch settings.orientation {
+		case .Horizontal: offset_delta = input.scroll.x
+		case .Vertical: offset_delta = input.scroll.y
+		}
+	}
+
+	offset = _clamp_scroll_offset(old_offset + offset_delta, settings)
+	delta = offset - old_offset
+	return offset, delta
+}
+
+_get_scroll_thumb_col :: proc(ui: ^UI, state: MouseState) -> [4]f32 {
+	color := ui.theme.colors[.ScrollbarThumb]
+	if state > .Normal {
+		color = ui.theme.colors[.ScrollbarThumbHovered]
+	}
+	return color
+}
+
+_update_scroll_ref :: proc(
+	input: ^Input, thumb_state: MouseState, ref_init: Maybe(f32),
+	offset_delta: int, settings: ScrollDiscrete,
+) -> Maybe(f32) {
+
+	cursor_pos := _get_scroll_cursor_pos(input, settings)
+	ref := ref_init
+	if thumb_state == .Pressed && ref == nil {
+		ref = f32(cursor_pos)
+	} else if ref != nil {
+		if !input.keys[.MouseLeft].ended_down {
+			ref = nil
+		} else {
+			ref = ref.(f32) + f32(offset_delta) * settings.inc
+		}
+	}
+
+	return ref
 }

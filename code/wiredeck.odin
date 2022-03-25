@@ -51,6 +51,7 @@ main :: proc() {
 	state: State
 	open_file(&state, "build.bat", ui.theme.text_colors)
 	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c", ui.theme.text_colors)
+	open_file(&state, "code/input.odin", ui.theme.text_colors)
 	state.editing = 0
 	state.sidebar_width = 150
 
