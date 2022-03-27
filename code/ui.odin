@@ -65,6 +65,8 @@ Direction :: enum {
 	Left,
 }
 
+Directions :: bit_set[Direction]
+
 Orientation :: enum {
 	Horizontal,
 	Vertical,
@@ -107,6 +109,11 @@ ScrollDiscrete :: struct {
 	total_step_count: int,
 	track: Rect2i,
 	orientation: Orientation,
+}
+
+ContainerResize :: struct {
+	size: ^int, 
+	sep_drag_ref: ^Maybe(f32),
 }
 
 init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
@@ -170,7 +177,12 @@ ui_end :: proc(ui: ^UI) {
 	free_all(ui.arena_allocator)
 }
 
-begin_container :: proc(ui: ^UI, dir: Direction, size_init: union{int, ^int}, sep_drag_ref_init: ^Maybe(f32) = nil) {
+begin_container :: proc(
+	ui: ^UI, 
+	dir: Direction, 
+	size_init: union{int, ContainerResize}, 
+	border: Directions = nil,
+) {
 
 	size: int
 	sep_drag_ref: Maybe(f32)
@@ -178,9 +190,9 @@ begin_container :: proc(ui: ^UI, dir: Direction, size_init: union{int, ^int}, se
 	switch val in size_init {
 	case int:
 		size = val
-	case ^int:
-		size = val^
-		sep_drag_ref = sep_drag_ref_init^
+	case ContainerResize:
+		size = val.size^
+		sep_drag_ref = val.sep_drag_ref^
 		resisable = true
 	}
 
@@ -245,10 +257,11 @@ begin_container :: proc(ui: ^UI, dir: Direction, size_init: union{int, ^int}, se
 		rect = _take_rect(last_container(ui), dir, size)
 	}
 	append(&ui.container_stack, rect)
+	_cmd_outline(ui, rect, ui.theme.colors[.Border], border)
 
 	if resisable {
-		size_init.(^int)^ = size
-		sep_drag_ref_init^ = sep_drag_ref
+		size_init.(ContainerResize).size^ = size
+		size_init.(ContainerResize).sep_drag_ref^ = sep_drag_ref
 
 		if sep_drag_ref != nil {
 			ui.should_capture_mouse = true
@@ -377,6 +390,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	line_numbers_rect.dim.x = num_rect_dim.x + 2 * ui.theme.sizes[.TextAreaGutter]
 	text_rect.dim.x -= line_numbers_rect.dim.x
 	text_rect.topleft.x += line_numbers_rect.dim.x
+	_cmd_outline(ui, line_numbers_rect, ui.theme.colors[.Border], {.Right})
 
 	// NOTE(khvorov) Scrollbars
 	scrollbar_tracks := _position_scrollbar_tracks_outside(text_rect, ui.theme.sizes[.ScrollbarWidth])
@@ -677,7 +691,7 @@ _get_rect_mouse_state :: proc(input: ^Input, rect: Rect2i) -> MouseState {
 	return state
 }
 
-_cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32) {
+_get_inner_outline :: proc(rect: Rect2i) -> (result: [Direction]Rect2i) {
 	top := rect
 	top.dim.y = 1
 
@@ -690,10 +704,21 @@ _cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32) {
 	right := left
 	right.topleft.x += rect.dim.x - 1
 
-	append(ui.current_cmd_buffer, UICommandRect{top, color})
-	append(ui.current_cmd_buffer, UICommandRect{bottom, color})
-	append(ui.current_cmd_buffer, UICommandRect{left, color})
-	append(ui.current_cmd_buffer, UICommandRect{right, color})
+	result[.Top] = top
+	result[.Bottom] = bottom
+	result[.Left] = left
+	result[.Right] = right
+
+	return result
+}
+
+_cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32, dirs: Directions = {.Top, .Bottom, .Left, .Right}) {
+	rects := _get_inner_outline(rect)
+	for dir in Direction {
+		if dir in dirs {
+			append(ui.current_cmd_buffer, UICommandRect{rects[dir], color})
+		}
+	}
 }
 
 _position_scrollbar_tracks_outside :: proc(rect: Rect2i, size: int) -> (tracks: [2]Rect2i) {

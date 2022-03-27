@@ -84,7 +84,7 @@ main :: proc() {
 
 		// NOTE(khvorov) Top bar
 		{
-			begin_container(&ui, .Top, get_button_dim(&ui).y)
+			begin_container(&ui, .Top, get_button_dim(&ui).y, {.Bottom})
 
 			ui.current_layout = .Horizontal
 
@@ -171,14 +171,14 @@ main :: proc() {
 
 		// NOTE(khvorov) Bottom bar
 		{
-			begin_container(&ui, .Bottom, get_button_dim(&ui).y)
+			begin_container(&ui, .Bottom, get_button_dim(&ui).y, {.Top})
 			ui.current_layout = .Horizontal
 			end_container(&ui)
 		}
 
 		// NOTE(khvorov) Sidebar
 		{
-			begin_container(&ui, .Left, &state.sidebar_width, &state.sidebar_drag_ref)
+			begin_container(&ui, .Left, ContainerResize{&state.sidebar_width, &state.sidebar_drag_ref})
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {
