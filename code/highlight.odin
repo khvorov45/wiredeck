@@ -38,6 +38,42 @@ highlight_c :: proc(
 	text_cols: [TextColorID][4]f32,
 ) {
 
+	str_left := file_content
+	col_left := colors[:]
+
+	for len(str_left) > 0 {
+
+		non_whitespace := index_non_whitespace(str_left)
+		str_left = str_left[non_whitespace:]
+		col_left = col_left[non_whitespace:]
+
+		section_end: Maybe(int)
+		section_col := text_cols[.Normal]
+		if starts_with(str_left, "/*") {
+			section_end = strings.index(str_left, "*/") + 2
+			section_col = text_cols[.Comment]
+		} else if starts_with(str_left, "//") {
+			section_end = strings.index_any(str_left, "\r\n") + 1
+			section_col = text_cols[.Comment]
+		}
+
+		if section_end, ok := section_end.(int); ok {
+			if section_end == -1 {
+				section_end = len(str_left)
+			}
+			section_cols := col_left[:section_end]
+			for col in &section_cols {
+				col = section_col
+			}
+			str_left = str_left[section_end:]
+			col_left = col_left[section_end:]
+
+		} else if len(str_left) > 0 {
+
+			str_left = str_left[1:]			
+			col_left = col_left[1:]			
+		}
+	}
 }
 
 highlight_bat :: proc(
