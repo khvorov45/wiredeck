@@ -753,9 +753,9 @@ _clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -
 }
 
 _get_scroll_discrete :: proc(
-	track: Rect2i, orientation: Orientation, inc_init: f32, total_step_count, thumb_size_min: int,
+	track: Rect2i, orientation: Orientation, inc_init: f32, total_step_count_init, thumb_size_min: int,
 ) -> ScrollDiscrete {
-	total_step_count := max(total_step_count, 0)
+	total_step_count := max(total_step_count_init, 0)
 	inc := inc_init
 	range := total_step_count * int(inc)
 	track_len := _get_scroll_track_len(track, orientation)
@@ -838,10 +838,10 @@ _get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollDiscrete) -> int {
 }
 
 _get_scroll_offset_and_delta :: proc(
-	input: ^Input, scroll_ref: Maybe(f32), old_offset: int, settings: ScrollDiscrete,
+	input: ^Input, scroll_ref: Maybe(f32), old_offset_init: int, settings: ScrollDiscrete,
 ) -> (offset: int, delta: int) {
 
-	old_offset := _clamp_scroll_offset(old_offset, settings)
+	old_offset := _clamp_scroll_offset(old_offset_init, settings)
 	old_thumb_rect := _get_scroll_thumb_rect(old_offset, settings)
 	old_thumb_state := _get_rect_mouse_state(input, old_thumb_rect)
 
