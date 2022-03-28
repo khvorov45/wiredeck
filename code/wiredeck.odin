@@ -62,11 +62,8 @@ main :: proc() {
 		// NOTE(khvorov) Input
 		//
 
-		clear_half_transitions(&input)
-		input.scroll = 0
 		if !window.is_focused {
 			state.top_bar_open_menu = .None
-			input = Input{}
 		}
 
 		if state.top_bar_pending_close {

@@ -1,8 +1,9 @@
 package wiredeck
 
-when ODIN_OS == .Windows do import win "core:sys/win32"
-
+import "core:c"
 import sdl "vendor:sdl2"
+
+when ODIN_OS == .Windows do import win "windows"
 
 PlatformWindow :: struct {
 	window:      ^sdl.Window,
@@ -73,13 +74,13 @@ set_mouse_capture :: proc(window: ^Window, state: bool) {
 	// If I don't do this the cursor will flicker between what I set it to
 	// and what other windows want to set it to (e.g. b/w arrow and resize)
 	// when the cursor is outside my window.
-	when ODIN_OS == .Windows {	
+	when ODIN_OS == .Windows {
 		sys_info: sdl.SysWMinfo
 		sdl.GetWindowWMInfo(window.platform.window, &sys_info)
 		if state {
-			win.set_capture(win.Hwnd(sys_info.info.win.window))
+			win.SetCapture(win.HWND(sys_info.info.win.window))
 		} else {
-			win.release_capture()
+			win.ReleaseCapture()
 		}
 	}
 
@@ -183,6 +184,30 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 		case .FOCUS_GAINED:
 			window.is_focused = true
 
+			// NOTE(khvorov) Buggy SDL does not report the correct cursor position
+			// when window is first created on windows (reports 0 0)
+			when ODIN_OS == .Windows {
+
+				sys_info: sdl.SysWMinfo
+				sdl.GetWindowWMInfo(window.platform.window, &sys_info)
+
+				win_cursor_pos: win.POINT
+				win.GetCursorPos(&win_cursor_pos)
+				win.ScreenToClient(win.HWND(sys_info.info.win.window), &win_cursor_pos)
+
+				input.cursor_pos.x = int(win_cursor_pos.x)
+				input.cursor_pos.y = int(win_cursor_pos.y)
+
+			} else {
+
+				sdl_cursor_pos: [2]c.int
+				sdl.GetMouseState(&sdl_cursor_pos.x, &sdl_cursor_pos.y)
+
+				input.cursor_pos.x = int(sdl_cursor_pos.x)
+				input.cursor_pos.y = int(sdl_cursor_pos.y)
+
+			}
+
 		case .LEAVE:
 			if !window.is_mouse_captured {
 				input.cursor_pos = -1
@@ -211,11 +236,16 @@ _record_event :: proc(window: ^Window, input: ^Input, event: sdl.Event) {
 		}
 
 	case .MOUSEMOTION:
-		input.cursor_pos = [2]int{int(event.motion.x), int(event.motion.y)}
+		if window.is_focused || window.is_mouse_captured {
+			input.cursor_pos = [2]int{int(event.motion.x), int(event.motion.y)}
+		}
 	}
 }
 
 wait_for_input :: proc(window: ^Window, input: ^Input) {
+
+	clear_half_transitions(input)
+	input.scroll = 0
 
 	event_count := sdl.PeepEvents(nil, 0, sdl.eventaction.PEEKEVENT, sdl.EventType.FIRSTEVENT, sdl.EventType.LASTEVENT)
 
