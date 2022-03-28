@@ -120,12 +120,12 @@ init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
 
 	theme: Theme
 
-	theme.colors[.Background] = [4]f32{0.1, 0.1, 0.1, 1}
+	theme.colors[.Background] = [4]f32{0.05, 0.05, 0.05, 1}
 	theme.colors[.BackgroundHovered] = [4]f32{0.2, 0.2, 0.2, 1}
-	theme.colors[.Border] = [4]f32{0.3, 0.3, 0.3, 1}
+	theme.colors[.Border] = [4]f32{0.2, 0.2, 0.2, 1}
 	theme.colors[.LineNumber] = [4]f32{0.7, 0.7, 0.7, 1}
-	theme.colors[.ScrollbarTrack] = [4]f32{0.2, 0.2, 0.2, 1}
-	theme.colors[.ScrollbarThumb] = [4]f32{0.5, 0.5, 0.5, 1}
+	theme.colors[.ScrollbarTrack] = [4]f32{0.1, 0.1, 0.1, 1}
+	theme.colors[.ScrollbarThumb] = [4]f32{0.3, 0.3, 0.3, 1}
 	theme.colors[.ScrollbarThumbHovered] = [4]f32{0.7, 0.7, 0.7, 1}
 
 	theme.text_colors[.Normal] = [4]f32{0.9, 0.9, 0.9, 1}
