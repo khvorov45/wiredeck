@@ -1,7 +1,8 @@
 package wiredeck
 
+import "core:c"
+import "core:fmt"
 import sdl "vendor:sdl2"
-
 when ODIN_OS == .Windows do import win "windows"
 
 PlatformWindow :: struct {
@@ -221,11 +222,15 @@ wait_for_input :: proc(window: ^Window, input: ^Input) {
 		event: sdl.Event
 		if event_count == 0 {
 			sdl.WaitEvent(&event)
-			input_modified ||= _record_event(window, input, event)
+			if _record_event(window, input, event) {
+				input_modified = true
+			}
 		}
 
 		for sdl.PollEvent(&event) != 0 {
-			input_modified ||= _record_event(window, input, event)
+			if _record_event(window, input, event) {
+				input_modified = true
+			}
 		}
 	}
 }
