@@ -21,6 +21,7 @@ TopBarMenu :: enum {
 
 OpenedFile :: struct {
 	path:                 string,
+	fullpath:             string,
 	content:              string,
 	colors:               [][4]f32, // NOTE(sen) Same length as string bytes
 	line_count:           int,
@@ -182,7 +183,7 @@ main :: proc() {
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {
-				if button(&ui, opened_file.path, false, .Begin, state.top_bar_open_menu == .None) == .Clicked {
+				if button(&ui, opened_file.fullpath, false, .Begin, state.top_bar_open_menu == .None) == .Clicked {
 					state.editing = index
 				}
 			}
@@ -261,6 +262,7 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 
 		opened_file := OpenedFile {
 			path = strings.clone(filepath),
+			fullpath = get_full_filepath(filepath),
 			content = str,
 			colors = colors,
 			line_offset_lines = 0,

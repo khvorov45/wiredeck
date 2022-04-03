@@ -12,6 +12,7 @@ foreign win {
 	ScreenToClient :: proc(hWnd: HWND, lpPoint: LPPOINT) -> BOOL ---
 	TrackMouseEvent :: proc(lpEventTrack: LPTRACKMOUSEEVENT) -> BOOL ---
 	GetLastError :: proc() -> DWORD ---
+	GetFullPathNameA :: proc(filename: cstring, buffer_length: DWORD, buffer: cstring, file_part: rawptr) -> u32 ---
 }
 
 HWND :: distinct rawptr
