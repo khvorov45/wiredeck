@@ -185,13 +185,13 @@ ui_begin :: proc(ui: ^UI) {
 	ui.current_cmd_buffer = &ui.commands
 	ui.should_capture_mouse = false
 	ui.req_cursor = .Normal
+	free_all(ui.arena_allocator)
 }
 
 ui_end :: proc(ui: ^UI) {
 	for cmd in ui.floating_cmd {
 		append(&ui.commands, cmd)
 	}
-	free_all(ui.arena_allocator)
 }
 
 begin_container :: proc(
