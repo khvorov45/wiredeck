@@ -10,7 +10,6 @@ Font :: struct {
 	ft_face: ft.Face,
 	px_height_font: int,
 	px_height_line: int,
-	px_width: int, // NOTE(khvorov) Assume monospace for now
 	alphamap: []u8,
 	alphamap_dim: [2]int,
 	alphamap_glyphs: []GlyphInfo,
@@ -20,12 +19,13 @@ Font :: struct {
 GlyphInfo :: struct {
 	tex_rect: Rect2i,
 	offset: [2]int,
+	advance_x: int,
 }
 
 init_font :: proc(font: ^Font, filepath: string) {
 
 	alphamap_dim := [2]int{1000, 1000} // TODO(khvorov) Better size here
-	firstchar: rune = '!'
+	firstchar: rune = ' '
 	char_count := int('~') - int(firstchar) + 1
 
 	font^ = Font{
@@ -76,18 +76,33 @@ init_font :: proc(font: ^Font, filepath: string) {
 		font.alphamap_glyphs[ch_index] = GlyphInfo{
 			Rect2i{alphamap_offset, [2]int{int(bm.width), int(bm.rows)}},
 			[2]int{int(font.ft_face.glyph.bitmap_left), font.px_height_font - int(font.ft_face.glyph.bitmap_top)},
+			int(font.ft_face.glyph.advance.x) >> 6,
 		}
 
 		alphamap_offset.x += int(bm.width)
 		cur_row_max_y = max(cur_row_max_y, int(bm.rows))
 	}
 
-	font.px_width = int(font.ft_face.glyph.advance.x) >> 6
 	font.px_height_line = int(ft.MulFix(ft.Long(font.ft_face.height), ft.Long(font.ft_face.size.metrics.y_scale))) / 64
 }
 
+get_glyph_index :: proc(font: ^Font, glyph: u8) -> int {
+	result := int(glyph) - int(font.firstchar)
+	return result
+}
+
 get_glyph_info :: proc(font: ^Font, glyph: u8) -> GlyphInfo {
-	ch_index := int(glyph) - int(font.firstchar)
+	ch_index := get_glyph_index(font, glyph)
 	ch_data := font.alphamap_glyphs[ch_index]
 	return ch_data
+}
+
+get_string_width :: proc(font: ^Font, str: string) -> int {
+	result := 0
+	for byte_index in 0..<len(str) {
+		ch := str[byte_index]
+		ch_info := get_glyph_info(font, ch)
+		result += ch_info.advance_x
+	}
+	return result
 }

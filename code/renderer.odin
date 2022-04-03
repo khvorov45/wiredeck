@@ -156,9 +156,10 @@ draw_text_px :: proc(
 			}
 			draw_glyph_px(renderer, font, ch, cur_topleft, color, clip_rect)
 		}
-		cur_topleft.x += font.px_width
 		if ch == '\t' {
-			cur_topleft.x += 3 * font.px_width
+			cur_topleft.x += 4 * get_glyph_info(font, ' ').advance_x
+		} else {
+			cur_topleft.x += get_glyph_info(font, ch).advance_x
 		}
 		if cur_topleft.x > rect_bottomright.x {
 			break

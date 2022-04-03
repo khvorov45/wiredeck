@@ -7,6 +7,7 @@ import "core:mem"
 UI :: struct {
 	input:                ^Input,
 	font:                 ^Font,
+	monospace_px_width:   int,
 	theme:                Theme,
 	total_dim:            [2]int,
 	current_layout:       Orientation,
@@ -144,6 +145,7 @@ init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
 	ui^ = UI {
 		input = input,
 		font = font,
+		monospace_px_width = get_glyph_info(font, 'a').advance_x,
 		theme = theme,
 		total_dim = [2]int{width, height},
 		current_layout = .Horizontal,
@@ -379,7 +381,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	line_count := file.line_count
 
 	line_count_str := fmt.tprintf("%d", line_count)
-	num_rect_dim := [2]int{len(line_count_str) * ui.font.px_width, ui.font.px_height_line}
+	num_rect_dim := [2]int{get_string_width(ui.font, line_count_str), ui.font.px_height_line}
 
 	text_area_rect := _take_entire_rect(last_container(ui))
 	text_rect := text_area_rect
@@ -404,7 +406,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	scroll_discrete := _get_scroll_discrete2(
 		scrollbar_tracks,
 		[2]f32{f32(ui.theme.sizes[.ScrollbarIncPerCol]), f32(ui.theme.sizes[.ScrollbarIncPerLine])},
-		[2]int{file.max_col_width_glyphs - text_rect.dim.x / ui.font.px_width, line_count - 1},
+		[2]int{file.max_col_width_glyphs - text_rect.dim.x / ui.monospace_px_width, line_count - 1},
 		ui.theme.sizes[.ScrollbarThumbLengthMin],
 	)
 
@@ -500,7 +502,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		line := str_left[:line_end_index]
 		line_col := colors_left[:line_end_index]
 
-		current_line_topleft := [2]int{current_topleft_x_line - col_offset * ui.font.px_width, current_topleft_y}
+		current_line_topleft := [2]int{current_topleft_x_line - col_offset * ui.monospace_px_width, current_topleft_y}
 		append(
 			ui.current_cmd_buffer,
 			UICommandTextline{line, current_line_topleft, text_rect, line_col},
@@ -570,7 +572,7 @@ get_button_pad :: proc(ui: ^UI) -> [2][2]int {
 }
 
 get_button_dim :: proc(ui: ^UI, label: string = "") -> [2]int {
-	text_width := ui.font.px_width * len(label)
+	text_width := get_string_width(ui.font, label)
 	text_height := ui.font.px_height_line
 	padding := get_button_pad(ui)
 	result := [2]int{
