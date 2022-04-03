@@ -30,6 +30,7 @@ Theme :: struct {
 
 ColorID :: enum {
 	Background,
+	BackgroundFloating,
 	BackgroundHovered,
 	LineNumber,
 	Border,
@@ -121,6 +122,7 @@ init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
 	theme: Theme
 
 	theme.colors[.Background] = [4]f32{0.05, 0.05, 0.05, 1}
+	theme.colors[.BackgroundFloating] = [4]f32{0.1, 0.1, 0.1, 1}
 	theme.colors[.BackgroundHovered] = [4]f32{0.2, 0.2, 0.2, 1}
 	theme.colors[.Border] = [4]f32{0.2, 0.2, 0.2, 1}
 	theme.colors[.LineNumber] = [4]f32{0.7, 0.7, 0.7, 1}
@@ -304,7 +306,7 @@ begin_floating :: proc(ui: ^UI, dir: Direction, dim: [2]int, ref: ^Rect2i = nil)
 
 		append(&ui.container_stack, rect)
 
-		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.Background]})
+		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundFloating]})
 		_cmd_outline(ui, rect, ui.theme.colors[.Border])
 
 		ui.floating = rect
