@@ -6,7 +6,7 @@ import "core:mem"
 
 UI :: struct {
 	input:                ^Input,
-	font:                 ^Font,
+	fonts:                 [FontID]^Font,
 	monospace_px_width:   int,
 	theme:                Theme,
 	total_dim:            [2]int,
@@ -27,6 +27,11 @@ Theme :: struct {
 	colors: [ColorID][4]f32,
 	text_colors: [TextColorID][4]f32,
 	sizes:  [SizeID]int,
+}
+
+FontID :: enum {
+	Monospace,
+	Varwidth,
 }
 
 ColorID :: enum {
@@ -93,6 +98,7 @@ UICommandRect :: struct {
 
 UICommandTextline :: struct {
 	str:          string,
+	font_id:      FontID,
 	text_topleft: [2]int,
 	clip_rect:    Rect2i,
 	colors:       union{[4]f32, [][4]f32},
@@ -118,7 +124,10 @@ ContainerResize :: struct {
 	sep_drag_ref: ^Maybe(f32),
 }
 
-init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
+init_ui :: proc(
+	ui: ^UI, width, height: int, input: ^Input,
+	monospace_font: ^Font, varwidth_font: ^Font,
+) {
 
 	theme: Theme
 
@@ -142,10 +151,14 @@ init_ui :: proc(ui: ^UI, width, height: int, input: ^Input, font: ^Font) {
 	theme.sizes[.ScrollbarIncPerLine] = 20
 	theme.sizes[.ScrollbarIncPerCol] = 20
 
+	fonts: [FontID]^Font
+	fonts[.Monospace] = monospace_font
+	fonts[.Varwidth] = varwidth_font
+
 	ui^ = UI {
 		input = input,
-		font = font,
-		monospace_px_width = get_glyph_info(font, 'a').advance_x,
+		fonts = fonts,
+		monospace_px_width = get_glyph_info(monospace_font, 'a').advance_x,
 		theme = theme,
 		total_dim = [2]int{width, height},
 		current_layout = .Horizontal,
@@ -370,7 +383,7 @@ button :: proc(
 
 	append(
 		ui.current_cmd_buffer,
-		UICommandTextline{label_str, text_topleft, rect, ui.theme.text_colors[.Normal]},
+		UICommandTextline{label_str, .Varwidth, text_topleft, rect, ui.theme.text_colors[.Normal]},
 	)
 
 	return state
@@ -381,7 +394,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	line_count := file.line_count
 
 	line_count_str := fmt.tprintf("%d", line_count)
-	num_rect_dim := [2]int{get_string_width(ui.font, line_count_str), ui.font.px_height_line}
+	num_rect_dim := [2]int{get_string_width(ui.fonts[.Monospace], line_count_str), ui.fonts[.Monospace].px_height_line}
 
 	text_area_rect := _take_entire_rect(last_container(ui))
 	text_rect := text_area_rect
@@ -505,7 +518,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		current_line_topleft := [2]int{current_topleft_x_line - col_offset * ui.monospace_px_width, current_topleft_y}
 		append(
 			ui.current_cmd_buffer,
-			UICommandTextline{line, current_line_topleft, text_rect, line_col},
+			UICommandTextline{line, .Monospace, current_line_topleft, text_rect, line_col},
 		)
 
 		str_left = str_left[line_end_index:]
@@ -542,10 +555,10 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
 			append(
 				ui.current_cmd_buffer,
-				UICommandTextline{num_string, current_num_topleft, line_numbers_rect, ui.theme.text_colors[.Comment]},
+				UICommandTextline{num_string, .Monospace, current_num_topleft, line_numbers_rect, ui.theme.text_colors[.Comment]},
 			)
 			current_line_number += 1
-			current_topleft_y += ui.font.px_height_line
+			current_topleft_y += ui.fonts[.Monospace].px_height_line
 		}
 
 		if skip_count == 0 || current_topleft_y > text_rect_max_y {
@@ -572,8 +585,8 @@ get_button_pad :: proc(ui: ^UI) -> [2][2]int {
 }
 
 get_button_dim :: proc(ui: ^UI, label: string = "") -> [2]int {
-	text_width := get_string_width(ui.font, label)
-	text_height := ui.font.px_height_line
+	text_width := get_string_width(ui.fonts[.Varwidth], label)
+	text_height := ui.fonts[.Varwidth].px_height_line
 	padding := get_button_pad(ui)
 	result := [2]int{
 		text_width + padding.x[0] + padding.x[1],

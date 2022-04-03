@@ -42,11 +42,13 @@ main :: proc() {
 	input: Input
 	input.cursor_pos = -1
 
-	font: Font
-	init_font(&font, "fonts/LiberationMono-Regular.ttf")
+	monospace_font: Font
+	init_font(&monospace_font, "fonts/LiberationMono-Regular.ttf")
+	varwidth_font: Font
+	init_font(&varwidth_font, "fonts/LiberationSans-Regular.ttf")
 
 	ui: UI
-	init_ui(&ui, window.dim.x, window.dim.y, &input, &font)
+	init_ui(&ui, window.dim.x, window.dim.y, &input, &monospace_font, &varwidth_font)
 
 	state: State
 	open_file(&state, "build.bat", ui.theme.text_colors)
@@ -215,7 +217,7 @@ main :: proc() {
 			case UICommandRect:
 				draw_rect_px(&renderer, cmd.rect, cmd.color)
 			case UICommandTextline:
-				draw_text_px(&renderer, &font, cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.colors)
+				draw_text_px(&renderer, ui.fonts[cmd.font_id], cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.colors)
 			}
 		}
 
