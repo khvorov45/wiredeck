@@ -48,6 +48,7 @@ ColorID :: enum {
 TextColorID :: enum {
 	Normal,
 	Comment,
+	Punctuation,
 }
 
 SizeID :: enum {
@@ -120,7 +121,7 @@ ScrollDiscrete :: struct {
 }
 
 ContainerResize :: struct {
-	size: ^int, 
+	size: ^int,
 	sep_drag_ref: ^Maybe(f32),
 }
 
@@ -142,6 +143,7 @@ init_ui :: proc(
 
 	theme.text_colors[.Normal] = [4]f32{0.9, 0.9, 0.9, 1}
 	theme.text_colors[.Comment] = [4]f32{0.5, 0.5, 0.5, 1}
+	theme.text_colors[.Punctuation] = [4]f32{0.8, 0.8, 0, 1}
 
 	theme.sizes[.ButtonPadding] = 5
 	theme.sizes[.Separator] = 5
@@ -195,9 +197,9 @@ ui_end :: proc(ui: ^UI) {
 }
 
 begin_container :: proc(
-	ui: ^UI, 
-	dir: Direction, 
-	size_init: union{int, ContainerResize}, 
+	ui: ^UI,
+	dir: Direction,
+	size_init: union{int, ContainerResize},
 	border: Directions = nil,
 ) {
 
@@ -338,6 +340,7 @@ end_floating :: proc(ui: ^UI) {
 button :: proc(
 	ui: ^UI,
 	label_str: string,
+	label_col: Maybe([][4]f32) = nil,
 	active: bool = false,
 	text_align: Align = .Center,
 	process_input: bool = true,
@@ -381,9 +384,15 @@ button :: proc(
 		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundHovered]})
 	}
 
+	col: union{[4]f32, [][4]f32}
+	if label_col != nil {
+		col = label_col.([][4]f32)
+	} else {
+		col = ui.theme.text_colors[.Normal]
+	}
 	append(
 		ui.current_cmd_buffer,
-		UICommandTextline{label_str, .Varwidth, text_topleft, rect, ui.theme.text_colors[.Normal]},
+		UICommandTextline{label_str, .Varwidth, text_topleft, rect, col},
 	)
 
 	return state

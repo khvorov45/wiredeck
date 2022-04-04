@@ -22,8 +22,9 @@ TopBarMenu :: enum {
 OpenedFile :: struct {
 	path:                 string,
 	fullpath:             string,
+	fullpath_col:         [][4]f32, // NOTE(khvorov) Same length as fullpath bytes
 	content:              string,
-	colors:               [][4]f32, // NOTE(sen) Same length as string bytes
+	colors:               [][4]f32, // NOTE(khvorov) Same length as content bytes
 	line_count:           int,
 	max_col_width_glyphs: int,
 	line_offset_lines:    int,
@@ -89,10 +90,10 @@ main :: proc() {
 
 			ui.current_layout = .Horizontal
 
-			file_button_state := button(&ui, "File", state.top_bar_open_menu == .File)
+			file_button_state := button(ui = &ui, label_str = "File", active = state.top_bar_open_menu == .File)
 			file_button_rect := ui.last_element_rect
 
-			edit_button_state := button(&ui, "Edit", state.top_bar_open_menu == .Edit)
+			edit_button_state := button(ui = &ui, label_str = "Edit", active = state.top_bar_open_menu == .Edit)
 			edit_button_rect := ui.last_element_rect
 
 			if state.top_bar_open_menu != .None {
@@ -133,14 +134,14 @@ main :: proc() {
 
 					#partial switch state.top_bar_open_menu {
 					case .File:
-						if button(&ui, "Open file", false, .Begin) == .Clicked {
+						if button(ui = &ui, label_str = "Open file", text_align = .Begin) == .Clicked {
 							filepath := get_path_from_platform_file_dialog(.File)
 							if filepath != "" {
 								open_file(&state, filepath, ui.theme.text_colors)
 							}
 						}
 
-						if button(&ui, "Open folder", false, .Begin) == .Clicked {
+						if button(ui = &ui, label_str = "Open folder", text_align = .Begin) == .Clicked {
 							dirpath := get_path_from_platform_file_dialog(.Folder)
 							if dirpath == "" {
 								fmt.println("open folder: dialog closed")
@@ -183,7 +184,14 @@ main :: proc() {
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {
-				if button(&ui, opened_file.fullpath, false, .Begin, state.top_bar_open_menu == .None) == .Clicked {
+				button_state := button(
+					ui = &ui,
+					label_str = opened_file.fullpath,
+					label_col = opened_file.fullpath_col,
+					text_align = .End,
+					process_input = state.top_bar_open_menu == .None,
+				)
+				if button_state == .Clicked {
 					state.editing = index
 				}
 			}
@@ -260,9 +268,13 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 
 		colors := highlight(filepath, str, text_cols)
 
+		fullpath := get_full_filepath(filepath)
+		fullpath_col := highlight_filepath(fullpath, text_cols)
+
 		opened_file := OpenedFile {
 			path = strings.clone(filepath),
-			fullpath = get_full_filepath(filepath),
+			fullpath = fullpath,
+			fullpath_col = fullpath_col,
 			content = str,
 			colors = colors,
 			line_offset_lines = 0,

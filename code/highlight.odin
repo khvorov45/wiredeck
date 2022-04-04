@@ -1,6 +1,7 @@
 package wiredeck
 
 import "core:strings"
+import fp "core:path/filepath"
 
 highlight :: proc(
 	filepath: string,
@@ -70,8 +71,8 @@ highlight_c :: proc(
 
 		} else if len(str_left) > 0 {
 
-			str_left = str_left[1:]			
-			col_left = col_left[1:]			
+			str_left = str_left[1:]
+			col_left = col_left[1:]
 		}
 	}
 }
@@ -112,6 +113,36 @@ highlight_bat :: proc(
 			col_left = col_left[1:]
 		}
 	}
+}
+
+highlight_filepath :: proc(filepath: string, text_cols: [TextColorID][4]f32) -> [][4]f32 {
+	result := make([][4]f32, len(filepath))
+
+	last_sep_index := 0
+	for index in 0..<len(filepath) {
+		ch := filepath[index]
+
+		when ODIN_OS == .Windows {
+			if ch == ':' {
+				result[index] = text_cols[.Punctuation]
+			}
+		}
+
+		if ch == fp.SEPARATOR {
+			last_sep_index = index
+			result[index] = text_cols[.Punctuation]
+		} else {
+			result[index] = text_cols[.Normal]
+		}
+	}
+
+	if len(filepath) > 0 {
+		for index in 0..last_sep_index {
+			result[index] *= 0.8
+		}
+	}
+
+	return result
 }
 
 index_non_whitespace :: proc(str: string) -> int {
