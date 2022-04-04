@@ -38,7 +38,7 @@ OpenedFile :: struct {
 main :: proc() {
 
 	global_arena: vmem.Static_Arena
-	vmem.static_arena_init(&global_arena, vmem.STATIC_ARENA_DEFAULT_RESERVE_SIZE)
+	vmem.static_arena_init(&global_arena, uint(mem.gigabytes(1)))
 	context.allocator = vmem.static_arena_allocator(&global_arena)
 
 	global_scratch: mem.Scratch_Allocator
