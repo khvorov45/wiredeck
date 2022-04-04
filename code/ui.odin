@@ -164,11 +164,11 @@ init_ui :: proc(
 		theme = theme,
 		total_dim = [2]int{width, height},
 		current_layout = .Horizontal,
-		container_stack = make([dynamic]Rect2i, 0, 10),
-		commands = make([dynamic]UICommand, 0, 50),
+		container_stack = _buffer_from_slice(make([]Rect2i, 100)),
+		commands = _buffer_from_slice(make([]UICommand, 1000)),
 		last_element_rect = Rect2i{},
 		floating = nil,
-		floating_cmd = make([dynamic]UICommand, 0, 50),
+		floating_cmd = _buffer_from_slice(make([]UICommand, 100)),
 		current_cmd_buffer = nil,
 	}
 
@@ -931,4 +931,16 @@ _update_scroll_ref :: proc(
 	}
 
 	return ref
+}
+
+_buffer_from_slice :: proc "contextless" (backing: $T/[]$E) -> [dynamic]E {
+	return transmute([dynamic]E)mem.Raw_Dynamic_Array{
+		data      = raw_data(backing),
+		len       = 0,
+		cap       = len(backing),
+		allocator =  mem.Allocator{
+			procedure = mem.panic_allocator_proc,
+			data = nil,
+		},
+	}
 }
