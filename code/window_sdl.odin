@@ -2,6 +2,7 @@ package wiredeck
 
 import "core:c"
 import "core:fmt"
+import "core:strings"
 import sdl "vendor:sdl2"
 when ODIN_OS == .Windows do import win "windows"
 
@@ -15,10 +16,10 @@ PlatformWindow :: struct {
 
 init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 
-	assert(sdl.Init(sdl.INIT_EVERYTHING) == 0)
+	assert(sdl.Init(sdl.INIT_VIDEO) == 0)
 
 	sdl_window := sdl.CreateWindow(
-		cstring(raw_data(title)),
+		strings.clone_to_cstring(title, context.temp_allocator),
 		sdl.WINDOWPOS_CENTERED,
 		sdl.WINDOWPOS_CENTERED,
 		i32(width),
@@ -58,19 +59,19 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 	}
 
 	window^ = Window{
-		true,
-		false,
-		true,
-		false,
-		[2]int{width, height},
-		{sdl_window, renderer, texture, texture_dim, cursors},
+		is_running = true,
+		is_fullscreen = false,
+		is_focused = true,
+		is_mouse_captured = false,
+		dim = [2]int{width, height},
+		platform = {sdl_window, renderer, texture, texture_dim, cursors},
 	}
 }
 
 set_mouse_capture :: proc(window: ^Window, state: bool) {
 	sdl.CaptureMouse(sdl.bool(state))
 
-	// NOTE(khvorov) Buggy SDL only half-captures the mouse on windows.
+	// NOTE(khvorov) Buggy SDL only half-captures the mouse on Windows.
 	// If I don't do this the cursor will flicker between what I set it to
 	// and what other windows want to set it to (e.g. b/w arrow and resize)
 	// when the cursor is outside my window.
