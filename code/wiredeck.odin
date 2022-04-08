@@ -4,7 +4,8 @@ import "core:fmt"
 import "core:strings"
 import "core:os"
 import "core:mem"
-import vmem "core:mem/virtual"
+
+println :: fmt.println
 
 State :: struct {
 	top_bar_open_menu:     TopBarMenu,
@@ -37,16 +38,16 @@ OpenedFile :: struct {
 
 main :: proc() {
 
-	global_arena: vmem.Static_Arena
-	vmem.static_arena_init(&global_arena, uint(mem.gigabytes(1)))
-	context.allocator = vmem.static_arena_allocator(&global_arena)
+	global_arena: StaticArena
+	assert(static_arena_init(&global_arena, mem.gigabytes(1)) == .None)
+	context.allocator = static_arena_allocator(&global_arena)
 
 	global_scratch: mem.Scratch_Allocator
 	global_scratch.backup_allocator = mem.panic_allocator()
 	global_scratch.leaked_allocations.allocator = mem.panic_allocator()
 	{
 		err: mem.Allocator_Error
-		global_scratch.data, err = mem.make_aligned([]byte, mem.megabytes(10), 2*align_of(rawptr))
+		global_scratch.data, err = mem.make_aligned([]byte, mem.megabytes(10), 2 * align_of(rawptr))
 		assert(err == .None)
 	}
 	context.temp_allocator = mem.scratch_allocator(&global_scratch)
@@ -69,6 +70,7 @@ main :: proc() {
 	init_ui(&ui, window.dim.x, window.dim.y, &input, &monospace_font, &varwidth_font)
 
 	state: State
+	state.opened_files = buffer_from_slice(make([]OpenedFile, 2048))
 	open_file(&state, "build.bat", ui.theme.text_colors)
 	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c", ui.theme.text_colors)
 	open_file(&state, "code/input.odin", ui.theme.text_colors)
