@@ -44,15 +44,9 @@ main :: proc() {
 	assert(static_arena_init(&global_arena, mem.gigabytes(1)) == .None)
 	context.allocator = static_arena_allocator(&global_arena)
 
-	global_scratch: mem.Scratch_Allocator
-	global_scratch.backup_allocator = mem.panic_allocator()
-	global_scratch.leaked_allocations.allocator = mem.panic_allocator()
-	{
-		err: mem.Allocator_Error
-		global_scratch.data, err = mem.make_aligned([]byte, mem.megabytes(10), 2 * align_of(rawptr))
-		assert(err == .None)
-	}
-	context.temp_allocator = mem.scratch_allocator(&global_scratch)
+	global_scratch: ScratchBuffer
+	assert(scratch_buffer_init(&global_scratch, mem.megabytes(10)) == .None)
+	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	window: Window
 	init_window(&window, "Wiredeck", 1000, 1000)

@@ -19,6 +19,12 @@ StaticArenaTemp :: struct {
 	used: int,
 }
 
+ScratchBuffer :: struct {
+	data: []byte,
+	curr_offset: int,
+	prev_allocation: rawptr,
+}
+
 align_formula :: proc(size, align: int) -> int {
 	max_size := size + align - 1
 	result := max_size - max_size % align
@@ -124,3 +130,90 @@ static_arena_temp_end :: proc(temp: StaticArenaTemp, loc := #caller_location) {
 static_arena_assert_no_temp :: proc(arena: ^StaticArena, loc := #caller_location) {
 	assert(arena.temp_count == 0, "Static_Arena_Temp not been ended", loc)
 }
+
+//
+// SECTION Scratch
+//
+
+scratch_buffer_init :: proc(
+	buf: ^ScratchBuffer, size: int, allocator := context.allocator,
+) -> (err: mem.Allocator_Error) {
+	buf^ = {}
+	buf.data, err = mem.make_aligned([]byte, size, 2 * align_of(rawptr), allocator)
+	return err
+}
+
+scratch_allocator :: proc(buffer: ^ScratchBuffer) -> mem.Allocator {
+	result := mem.Allocator{scratch_allocator_proc, buffer,}
+	return result
+}
+
+scratch_allocator_proc :: proc(
+	allocator_data: rawptr, mode: mem.Allocator_Mode,
+	size_init, align: int,
+    old_memory: rawptr, old_size: int, loc := #caller_location,
+) -> (data: []byte, err: mem.Allocator_Error) {
+
+	scratch := (^ScratchBuffer)(allocator_data)
+	assert(scratch.data != nil)
+
+	switch mode {
+	case .Alloc:
+		size := align_formula(size_init, align)
+
+		switch {
+		case scratch.curr_offset + size <= len(scratch.data):
+			data = scratch.data[scratch.curr_offset + (size - size_init):][:size_init]
+			scratch.curr_offset += size
+			scratch.prev_allocation = raw_data(data)
+
+		case size <= len(scratch.data):
+			data = scratch.data[size - size_init:][:size_init]
+			scratch.curr_offset = size
+			scratch.prev_allocation = raw_data(data)
+
+		case: panic(tprintf(
+			"scratch size is %d bytes but asked to allocate %d bytes", len(scratch.data), size,
+			), loc)
+		}
+
+	case .Free:
+		if scratch.prev_allocation == old_memory {
+			scratch.curr_offset = int(uintptr(scratch.prev_allocation) - uintptr(raw_data(scratch.data)))
+			scratch.prev_allocation = nil
+		}
+
+	case .Free_All:
+		scratch.curr_offset = 0
+		scratch.prev_allocation = nil
+
+	case .Resize:
+		begin := uintptr(raw_data(scratch.data))
+		end := begin + uintptr(len(scratch.data))
+		old_ptr := uintptr(old_memory)
+		if begin <= old_ptr && old_ptr < end {
+			if old_ptr + uintptr(size_init) < end {
+				data = mem.byte_slice(old_memory, size_init)
+				scratch.curr_offset = int(old_ptr - begin) + size_init
+			} else {
+				data, err := scratch_allocator_proc(allocator_data, .Alloc, size_init, align, old_memory, old_size, loc)
+				if err == nil {
+					copy(data, mem.byte_slice(old_memory, old_size))
+				}
+			}
+		} else {
+			err = .Invalid_Pointer
+		}
+
+	case .Query_Features:
+		set := (^mem.Allocator_Mode_Set)(old_memory)
+		if set != nil {
+			set^ = {.Alloc, .Free, .Free_All, .Resize, .Query_Features}
+		}
+
+	case .Query_Info: err = .Mode_Not_Implemented
+	}
+
+	return data, err
+}
+
