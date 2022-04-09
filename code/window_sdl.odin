@@ -1,7 +1,5 @@
 package wiredeck
 
-import "core:c"
-import "core:fmt"
 import "core:strings"
 import sdl "vendor:sdl2"
 when ODIN_OS == .Windows do import win "windows"

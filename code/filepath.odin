@@ -1,8 +1,11 @@
 package wiredeck
 
-import "core:os"
 import "core:strings"
-when ODIN_OS == .Windows do import win "windows"
+when ODIN_OS == .Windows {
+	import win "windows"
+} else {
+	import "core:os"
+}
 
 get_full_filepath :: proc(path: string) -> (result: string) {
 	when ODIN_OS == .Windows {
