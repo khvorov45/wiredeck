@@ -101,7 +101,7 @@ static_arena_allocator_proc :: proc(
 	#partial switch mode {
 	case .Alloc: data, err = memory_block_alloc(&arena.block, size, align)
 	case .Free_All: arena.block.used = 0
-	case: err = .Mode_Not_Implemented
+	case: panic(tprintf("static arena called with mode %s", mode), location)
 	}
 	return data, err
 }

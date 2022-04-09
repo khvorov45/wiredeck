@@ -6,6 +6,8 @@ import "core:os"
 import "core:mem"
 
 println :: fmt.println
+printf :: fmt.printf
+tprintf :: fmt.tprintf
 
 State :: struct {
 	top_bar_open_menu:     TopBarMenu,
