@@ -139,15 +139,6 @@ _window_proc :: proc "c" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lpa
 		window.platform.input_modified ||= input_modified
 	}
 
-	/*
-				win_cursor_pos: win.POINT
-				win.GetCursorPos(&win_cursor_pos)
-				win.ScreenToClient(win.HWND(sys_info.info.win.window), &win_cursor_pos)
-
-				input.cursor_pos.x = int(win_cursor_pos.x)
-				input.cursor_pos.y = int(win_cursor_pos.y)
-	*/
-
 	result = win.DefWindowProcA(hwnd, msg, wparam, lparam)
 	return result
 }
@@ -220,6 +211,7 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 		}
 
 	case win.WM_MOUSELEAVE:
+		// TODO(khvorov) Add mouse leave tracking
 		if window.is_focused || window.is_mouse_captured {
 			window.platform.input_modified = true
 			if !window.is_mouse_captured {
