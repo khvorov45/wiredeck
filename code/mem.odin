@@ -25,6 +25,11 @@ ScratchBuffer :: struct {
 	prev_allocation: rawptr,
 }
 
+BYTE :: 1
+KILOBYTE :: 1024 * BYTE
+MEGABYTE :: 1024 * KILOBYTE
+GIGABYTE :: 1024 * MEGABYTE
+
 align_formula :: proc(size, align: int) -> int {
 	max_size := size + align - 1
 	result := max_size - max_size % align

@@ -3,7 +3,6 @@ package wiredeck
 import "core:fmt"
 import "core:strings"
 import "core:os"
-import "core:mem"
 
 println :: fmt.println
 printf :: fmt.printf
@@ -41,11 +40,11 @@ OpenedFile :: struct {
 main :: proc() {
 
 	global_arena: StaticArena
-	assert(static_arena_init(&global_arena, mem.gigabytes(1)) == .None)
+	assert(static_arena_init(&global_arena, 1 * GIGABYTE) == .None)
 	context.allocator = static_arena_allocator(&global_arena)
 
 	global_scratch: ScratchBuffer
-	assert(scratch_buffer_init(&global_scratch, mem.megabytes(10)) == .None)
+	assert(scratch_buffer_init(&global_scratch, 10 * MEGABYTE) == .None)
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	window: Window
