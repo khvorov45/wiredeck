@@ -12,6 +12,7 @@ PlatformWindow :: struct {
 	decorations_dim: [2]int,
 	cursors: [CursorKind]win.HCURSOR,
 	input_modified: bool,
+	mouse_inside_window: bool,
 	context_creation: runtime.Context,
 }
 
@@ -113,13 +114,15 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 
 	previous_placement := win.WINDOWPLACEMENT{length = size_of(win.WINDOWPLACEMENT)}
 
+	_track_mouse_leave(hwnd)
+
 	window^ = Window{
 		is_running = true,
 		is_fullscreen = false,
 		is_focused = true,
 		is_mouse_captured = false,
 		dim = [2]int{width, height},
-		platform = {hwnd, hdc, pixel_info, previous_placement, decorations_dim, cursors, false, context},
+		platform = {hwnd, hdc, pixel_info, previous_placement, decorations_dim, cursors, false, true, context},
 	}
 }
 
@@ -141,6 +144,15 @@ _window_proc :: proc "c" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lpa
 
 	result = win.DefWindowProcA(hwnd, msg, wparam, lparam)
 	return result
+}
+
+_track_mouse_leave :: proc(hwnd: win.HWND) {
+	track_mouse := win.TRACKMOUSEEVENT{
+		cbSize = size_of(win.TRACKMOUSEEVENT),
+		dwFlags = win.TME_LEAVE,
+		hwndTrack = hwnd,
+	}
+	win.TrackMouseEvent(&track_mouse)
 }
 
 set_mouse_capture :: proc(window: ^Window, state: bool) {
@@ -211,7 +223,7 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 		}
 
 	case win.WM_MOUSELEAVE:
-		// TODO(khvorov) Add mouse leave tracking
+		window.platform.mouse_inside_window = false
 		if window.is_focused || window.is_mouse_captured {
 			window.platform.input_modified = true
 			if !window.is_mouse_captured {
@@ -235,6 +247,10 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 		}
 
 	case win.WM_MOUSEMOVE:
+		if !window.platform.mouse_inside_window {
+			window.platform.mouse_inside_window = true
+			_track_mouse_leave(window.platform.hwnd)
+		}
 		if window.is_focused || window.is_mouse_captured {
 			window.platform.input_modified = true
 			input.cursor_pos = [2]int{int(win.LOWORD(win.DWORD(event.lParam))), int(win.HIWORD(win.DWORD(event.lParam)))}
