@@ -237,11 +237,11 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 	case win.WM_MOUSEWHEEL:
 		if window.is_focused || window.is_mouse_captured {
 			window.platform.input_modified = true
-			delta := int(win.HIWORD(win.DWORD(event.wParam)))
+			delta := -int(transmute(i16)(win.HIWORD(win.DWORD(event.wParam)))) / 120
 			if input.keys[.Shift].ended_down {
-				input.scroll.y = delta
-			} else {
 				input.scroll.x = delta
+			} else {
+				input.scroll.y = delta
 			}
 		}
 
