@@ -51,7 +51,7 @@ main :: proc() {
 	init_window(&window, "Wiredeck", 1000, 1000)
 
 	renderer: Renderer
-	init_renderer(&renderer, window.dim.x, window.dim.y)
+	init_renderer(&renderer, 7680, 4320)
 
 	input: Input
 	input.cursor_pos = -1
@@ -94,7 +94,8 @@ main :: proc() {
 		// NOTE(khvorov) UI
 		//
 
-		ui.total_dim = window.dim
+		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
+		ui.total_dim = renderer.pixels_dim
 		ui_begin(&ui)
 
 		// NOTE(khvorov) Top bar
@@ -232,7 +233,6 @@ main :: proc() {
 		// NOTE(khvorov) Render
 		//
 
-		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
 
 		for cmd_ui in ui.commands {
 			switch cmd in cmd_ui {

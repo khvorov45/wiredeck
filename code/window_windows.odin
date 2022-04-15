@@ -137,6 +137,9 @@ _window_proc :: proc "c" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lpa
 		case win.WM_DESTROY: window.is_running = false
 		case win.WM_KILLFOCUS: window.is_focused = false
 		case win.WM_SETFOCUS: window.is_focused = true
+		case win.WM_SIZE:
+			window.platform.input_modified = true
+			window.dim = [2]int{int(win.LOWORD(win.DWORD(lparam))), int(win.HIWORD(win.DWORD(lparam)))}
 		case: input_modified = false
 		}
 		window.platform.input_modified ||= input_modified
@@ -231,10 +234,6 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 			}
 		}
 
-	case win.WM_SIZE:
-		window.platform.input_modified = true
-		window.dim = [2]int{int(win.LOWORD(win.DWORD(event.lParam))), int(win.HIWORD(win.DWORD(event.lParam)))}
-
 	case win.WM_MOUSEWHEEL:
 		if window.is_focused || window.is_mouse_captured {
 			window.platform.input_modified = true
@@ -288,7 +287,10 @@ wait_for_input :: proc(window: ^Window, input: ^Input) {
 }
 
 display_pixels :: proc(window: ^Window, pixels: []u32, pixels_dim: [2]int) {
+	printf("win: %v, px: %v\n", window.dim, pixels_dim)
 	if window.is_running {
+		window.platform.pixel_info.bmiHeader.biWidth = i32(pixels_dim.x)
+		window.platform.pixel_info.bmiHeader.biHeight = -i32(pixels_dim.y)
 		result := win.StretchDIBits(
 			hdc = window.platform.hdc,
 			xDest = 0,

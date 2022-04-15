@@ -1,27 +1,36 @@
 package wiredeck
 
+import "core:intrinsics"
+
 Renderer :: struct {
-	pixels:     []u32,
+	pixel_storage: []u32,
+	pixels: []u32,
 	pixels_dim: [2]int,
 }
 
 LineSegment2i :: struct {
 	start: [2]int,
-	end:   [2]int,
+	end: [2]int,
 }
 
-init_renderer :: proc(renderer: ^Renderer, width, height: int) {
+init_renderer :: proc(renderer: ^Renderer, max_width, max_height: int) {
 	renderer^ = Renderer {
-		pixels = make([]u32, width * height),
-		pixels_dim = [2]int{width, height},
+		pixel_storage = make([]u32, max_width * max_height),
 	}
 }
 
-clear_buffers :: proc(renderer: ^Renderer, color: [4]f32, dim: [2]int) {
-	if renderer.pixels_dim != dim {
-		new_pixels := make([]u32, dim.x * dim.y)
-		delete(renderer.pixels)
-		renderer.pixels = new_pixels
+clear_buffers :: proc(renderer: ^Renderer, color: [4]f32, dim_req: [2]int) {
+	if renderer.pixels_dim != dim_req {
+		dim := dim_req
+		if dim.x * dim.y > len(renderer.pixel_storage) {
+			width_over_height := f32(dim.x) / f32(dim.y)
+			height := intrinsics.sqrt(f32(len(renderer.pixel_storage)) / width_over_height)
+			width := width_over_height * height
+			dim.x = int(width)
+			dim.y = int(height)
+			assert(dim.x * dim.y < len(renderer.pixel_storage))
+		}
+		renderer.pixels = renderer.pixel_storage[:dim.x * dim.y]
 		renderer.pixels_dim = dim
 	}
 
