@@ -9,18 +9,10 @@ printf :: fmt.printf
 tprintf :: fmt.tprintf
 
 State :: struct {
-	top_bar_open_menu:     TopBarMenu,
-	top_bar_pending_close: bool,
 	opened_files:          [dynamic]OpenedFile,
 	editing:               Maybe(int),
 	sidebar_width:         int,
 	sidebar_drag_ref:      Maybe(f32),
-}
-
-TopBarMenu :: enum {
-	None,
-	File,
-	Edit,
 }
 
 OpenedFile :: struct {
@@ -67,10 +59,9 @@ main :: proc() {
 	state: State
 	state.opened_files = buffer_from_slice(make([]OpenedFile, 2048))
 	open_file(&state, "build.bat", ui.theme.text_colors)
-	open_file(&state, "code/tinyfiledialogs/tinyfiledialogs.c", ui.theme.text_colors)
 	open_file(&state, "code/input.odin", ui.theme.text_colors)
 	open_file(&state, "tests/highlight-c/highlight-c.c", ui.theme.text_colors)
-	state.editing = 3
+	state.editing = 2
 	state.sidebar_width = 150
 
 	for window.is_running {
@@ -79,16 +70,7 @@ main :: proc() {
 		// NOTE(khvorov) Input
 		//
 
-		if !window.is_focused {
-			state.top_bar_open_menu = .None
-		}
-
-		if state.top_bar_pending_close {
-			state.top_bar_pending_close = false
-			state.top_bar_open_menu = .None
-		} else {
-			wait_for_input(&window, &input)
-		}
+		wait_for_input(&window, &input)
 
 		//
 		// NOTE(khvorov) UI
@@ -97,100 +79,6 @@ main :: proc() {
 		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
 		ui.total_dim = renderer.pixels_dim
 		ui_begin(&ui)
-
-		// NOTE(khvorov) Top bar
-		{
-			begin_container(&ui, .Top, get_button_dim(&ui).y, {.Bottom})
-
-			ui.current_layout = .Horizontal
-
-			file_button_state := button(ui = &ui, label_str = "File", active = state.top_bar_open_menu == .File)
-			file_button_rect := ui.last_element_rect
-
-			edit_button_state := button(ui = &ui, label_str = "Edit", active = state.top_bar_open_menu == .Edit)
-			edit_button_rect := ui.last_element_rect
-
-			if state.top_bar_open_menu != .None {
-				if file_button_state == .Hovered {
-					state.top_bar_open_menu = .File
-				}
-				if edit_button_state == .Hovered {
-					state.top_bar_open_menu = .Edit
-				}
-			}
-
-			if file_button_state == .Clicked {
-				state.top_bar_open_menu = .None if state.top_bar_open_menu == .File else .File
-			}
-
-			if edit_button_state == .Clicked {
-				state.top_bar_open_menu = .None if state.top_bar_open_menu == .Edit else .Edit
-			}
-
-			float_rect: Rect2i
-			if state.top_bar_open_menu != .None {
-				ref: Rect2i
-				item_count: int
-				#partial switch state.top_bar_open_menu {
-				case .File:
-					ref = file_button_rect
-					item_count = 2
-				case .Edit:
-					ref = edit_button_rect
-					item_count = 3
-				}
-
-				float_height := get_button_dim(&ui).y * item_count
-				if begin_floating(&ui, .Bottom, [2]int{100, float_height}, &ref) {
-					float_rect = last_container(&ui)^
-
-					ui.current_layout = .Vertical
-
-					#partial switch state.top_bar_open_menu {
-					case .File:
-						if button(ui = &ui, label_str = "Open file", text_align = .Begin) == .Clicked {
-							filepath := get_path_from_platform_file_dialog(.File)
-							if filepath != "" {
-								open_file(&state, filepath, ui.theme.text_colors)
-							}
-						}
-
-						if button(ui = &ui, label_str = "Open folder", text_align = .Begin) == .Clicked {
-							dirpath := get_path_from_platform_file_dialog(.Folder)
-							if dirpath == "" {
-								fmt.println("open folder: dialog closed")
-							} else {
-								fmt.println("open folder: ", dirpath)
-							}
-						}
-
-					case .Edit:
-					}
-
-					end_floating(&ui)
-				}
-			}
-
-			if state.top_bar_open_menu != .None {
-				if was_unpressed(&input, .MouseLeft) || was_unpressed(&input, .MouseRight) {
-					file_pressed := point_inside_rect(input.cursor_pos, file_button_rect)
-					edit_pressed := point_inside_rect(input.cursor_pos, edit_button_rect)
-					float_pressed := point_inside_rect(input.cursor_pos, float_rect)
-					if !file_pressed && !edit_pressed && !float_pressed {
-						state.top_bar_pending_close = true
-					}
-				}
-			}
-
-			end_container(&ui)
-		}
-
-		// NOTE(khvorov) Bottom bar
-		{
-			begin_container(&ui, .Bottom, get_button_dim(&ui).y, {.Top})
-			ui.current_layout = .Horizontal
-			end_container(&ui)
-		}
 
 		// NOTE(khvorov) Sidebar
 		{
@@ -203,7 +91,6 @@ main :: proc() {
 					label_str = opened_file.fullpath,
 					label_col = opened_file.fullpath_col,
 					text_align = .End,
-					process_input = state.top_bar_open_menu == .None,
 				)
 				if button_state == .Clicked {
 					state.editing = index
