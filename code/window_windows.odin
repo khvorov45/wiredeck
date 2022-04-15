@@ -287,7 +287,6 @@ wait_for_input :: proc(window: ^Window, input: ^Input) {
 }
 
 display_pixels :: proc(window: ^Window, pixels: []u32, pixels_dim: [2]int) {
-	printf("win: %v, px: %v\n", window.dim, pixels_dim)
 	if window.is_running {
 		window.platform.pixel_info.bmiHeader.biWidth = i32(pixels_dim.x)
 		window.platform.pixel_info.bmiHeader.biHeight = -i32(pixels_dim.y)
