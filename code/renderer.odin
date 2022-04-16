@@ -77,18 +77,20 @@ draw_line_px :: proc(renderer: ^Renderer, line_init: LineSegment2i, color: [4]f3
 	}
 }
 
+// The texture should be packed linearly
 draw_alpha_tex_rect_px :: proc(
 	renderer: ^Renderer,
-	tex_rect: Rect2i,
+	tex_width: int,
+	tex_rows: int,
+	tex_offset: int,
 	tex_alpha: []u8,
-	tex_pitch: int,
 	topleft: [2]int,
 	color: [4]f32,
 	clip_rect: Rect2i,
 ) {
 	px_rect: Rect2i
 	px_rect.topleft = topleft
-	px_rect.dim = tex_rect.dim
+	px_rect.dim = [2]int{tex_width, tex_rows}
 
 	px_rect_clipped := clip_rect_to_rect(px_rect, Rect2i{{0, 0}, renderer.pixels_dim})
 	px_rect_clipped = clip_rect_to_rect(px_rect_clipped, clip_rect)
@@ -96,13 +98,11 @@ draw_alpha_tex_rect_px :: proc(
 	if is_valid_draw_rect(px_rect_clipped, renderer.pixels_dim) {
 
 		cur_px_coord := px_rect_clipped.topleft
-		tex_topleft := tex_rect.topleft + (px_rect_clipped.topleft - px_rect.topleft)
-		tex_bottomright := tex_topleft + px_rect_clipped.dim
+		tex_index := tex_offset
 
-		for y_coord in tex_topleft.y ..< tex_bottomright.y {
-			for x_coord in tex_topleft.x ..< tex_bottomright.x {
+		for tex_row in 0..<tex_rows {
+			for tex_col in 0..<tex_width {
 
-				tex_index := y_coord * tex_pitch + x_coord
 				tex_alpha := tex_alpha[tex_index]
 				tex_alpha01 := f32(tex_alpha) / 255
 				tex_col := color
@@ -114,6 +114,7 @@ draw_alpha_tex_rect_px :: proc(
 				renderer.pixels[px_index] = new_px_col
 
 				cur_px_coord.x += 1
+				tex_index += 1
 			}
 
 			cur_px_coord.y += 1
@@ -131,13 +132,13 @@ draw_glyph_px :: proc(
 	clip_rect: Rect2i,
 ) {
 	glyph_info := get_glyph_info(font, glyph)
-	topleft_offset := topleft + glyph_info.offset
 	draw_alpha_tex_rect_px(
 		renderer,
-		glyph_info.tex_rect,
+		glyph_info.width,
+		glyph_info.rows,
+		glyph_info.alphamap_offset,
 		font.alphamap,
-		font.alphamap_dim.x,
-		topleft_offset,
+		topleft + glyph_info.offset,
 		color,
 		clip_rect,
 	)
