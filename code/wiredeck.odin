@@ -9,10 +9,11 @@ printf :: fmt.printf
 tprintf :: fmt.tprintf
 
 State :: struct {
-	opened_files:          [dynamic]OpenedFile,
-	editing:               Maybe(int),
-	sidebar_width:         int,
-	sidebar_drag_ref:      Maybe(f32),
+	opened_files:      [dynamic]OpenedFile,
+	editing:           Maybe(int),
+	sidebar_width:     int,
+	sidebar_drag_ref:  Maybe(f32),
+	theme_editor_open: bool,
 }
 
 OpenedFile :: struct {
@@ -64,6 +65,8 @@ main :: proc() {
 	state.editing = 2
 	state.sidebar_width = 150
 
+	state.theme_editor_open = true
+
 	for window.is_running {
 
 		//
@@ -79,6 +82,22 @@ main :: proc() {
 		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
 		ui.total_dim = renderer.pixels_dim
 		ui_begin(&ui)
+
+		// NOTE(khvorov) Theme editor
+		if was_pressed(&input, .F11) {
+			state.theme_editor_open = !state.theme_editor_open
+		}
+		if state.theme_editor_open {
+			begin_container(&ui, .Right, ui.total_dim.x / 2, {.Left})
+			ui.current_layout = .Vertical
+
+			for color_id in ColorID {
+				color_id_string := tprintf("%v", color_id)
+				button(ui = &ui, label_str = color_id_string, text_align = .Begin)
+			}
+
+			end_container(&ui)
+		}
 
 		// NOTE(khvorov) Sidebar
 		{

@@ -30,6 +30,7 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 		win_cursor_kind: win.LPCSTR
 		switch cursor_kind {
 		case .Normal: win_cursor_kind = win.IDC_ARROW
+		case .Pointer: win_cursor_kind = win.IDC_HAND
 		case .SizeWE: win_cursor_kind = win.IDC_SIZEWE
 		case .SizeNS: win_cursor_kind = win.IDC_SIZENS
 		}
@@ -43,7 +44,7 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 		lpfnWndProc = _window_proc,
 		hInstance = window_instance,
 		lpszClassName = window_class_name,
-		hCursor = cursors[.Normal],
+		hCursor = nil, // NOTE(khvorov) If not null, windows will reset it on mouse move
 	}
 	assert(win.RegisterClassExA(&window_class) != 0)
 
@@ -124,6 +125,8 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 		dim = [2]int{width, height},
 		platform = {hwnd, hdc, pixel_info, previous_placement, decorations_dim, cursors, false, true, context},
 	}
+
+	set_cursor(window, .Normal)
 }
 
 _window_proc :: proc "c" (hwnd: win.HWND, msg: win.UINT, wparam: win.WPARAM, lparam: win.LPARAM) -> win.LRESULT {
@@ -208,6 +211,7 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 			case win.VK_CONTROL: record_key(input, .Ctrl, ended_down)
 			case win.VK_F1: record_key(input, .F1, ended_down)
 			case win.VK_F4: record_key(input, .F4, ended_down)
+			case win.VK_F11: record_key(input, .F11, ended_down)
 			case: window.platform.input_modified = false
 			}
 		}

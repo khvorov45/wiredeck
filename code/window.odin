@@ -11,6 +11,7 @@ Window :: struct {
 
 CursorKind :: enum {
 	Normal,
+	Pointer,
 	SizeWE,
 	SizeNS,
 }

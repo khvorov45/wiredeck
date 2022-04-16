@@ -384,6 +384,10 @@ button :: proc(
 		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundHovered]})
 	}
 
+	if state >= .Hovered {
+		ui.req_cursor = .Pointer
+	}
+
 	col: union{[4]f32, [][4]f32}
 	if label_col != nil {
 		col = label_col.([][4]f32)
