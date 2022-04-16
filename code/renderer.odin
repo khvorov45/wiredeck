@@ -77,20 +77,18 @@ draw_line_px :: proc(renderer: ^Renderer, line_init: LineSegment2i, color: [4]f3
 	}
 }
 
-// The texture should be packed linearly
 draw_alpha_tex_rect_px :: proc(
 	renderer: ^Renderer,
-	tex_width: int,
-	tex_rows: int,
-	tex_offset: int,
+	tex_rect: Rect2i,
 	tex_alpha: []u8,
+	tex_pitch: int,
 	topleft: [2]int,
 	color: [4]f32,
 	clip_rect: Rect2i,
 ) {
 	px_rect: Rect2i
 	px_rect.topleft = topleft
-	px_rect.dim = [2]int{tex_width, tex_rows}
+	px_rect.dim = tex_rect.dim
 
 	px_rect_clipped := clip_rect_to_rect(px_rect, Rect2i{{0, 0}, renderer.pixels_dim})
 	px_rect_clipped = clip_rect_to_rect(px_rect_clipped, clip_rect)
@@ -98,11 +96,13 @@ draw_alpha_tex_rect_px :: proc(
 	if is_valid_draw_rect(px_rect_clipped, renderer.pixels_dim) {
 
 		cur_px_coord := px_rect_clipped.topleft
-		tex_index := tex_offset
+		tex_topleft := tex_rect.topleft + (px_rect_clipped.topleft - px_rect.topleft)
+		tex_bottomright := tex_topleft + px_rect_clipped.dim
 
-		for tex_row in 0..<tex_rows {
-			for tex_col in 0..<tex_width {
+		for y_coord in tex_topleft.y ..< tex_bottomright.y {
+			for x_coord in tex_topleft.x ..< tex_bottomright.x {
 
+				tex_index := y_coord * tex_pitch + x_coord
 				tex_alpha := tex_alpha[tex_index]
 				tex_alpha01 := f32(tex_alpha) / 255
 				tex_col := color
@@ -134,10 +134,9 @@ draw_glyph_px :: proc(
 	glyph_info := get_glyph_info(font, glyph)
 	draw_alpha_tex_rect_px(
 		renderer,
+		Rect2i{dim = [2]int{glyph_info.width, glyph_info.rows}},
+		font.alphamap[glyph_info.alphamap_offset:],
 		glyph_info.width,
-		glyph_info.rows,
-		glyph_info.alphamap_offset,
-		font.alphamap,
 		topleft + glyph_info.offset,
 		color,
 		clip_rect,
@@ -189,11 +188,11 @@ draw_icon_px :: proc(
 	slack := rect.dim - icon_dim
 	topleft := rect.topleft + slack / 2
 	draw_alpha_tex_rect_px(
-		renderer, 
+		renderer,
 		[2]int{int(tex_coords.x), int(tex_coords.y)},
 		[2]int{int(tex_coords.w), int(tex_coords.h)},
-		mu.default_atlas_alpha[:], 
-		mu.DEFAULT_ATLAS_WIDTH, 
+		mu.default_atlas_alpha[:],
+		mu.DEFAULT_ATLAS_WIDTH,
 		topleft,
 		color,
 	)
