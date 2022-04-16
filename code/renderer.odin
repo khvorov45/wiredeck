@@ -114,7 +114,6 @@ draw_alpha_tex_rect_px :: proc(
 				renderer.pixels[px_index] = new_px_col
 
 				cur_px_coord.x += 1
-				tex_index += 1
 			}
 
 			cur_px_coord.y += 1
