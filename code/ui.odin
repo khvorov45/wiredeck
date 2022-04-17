@@ -202,8 +202,8 @@ begin_container :: proc(
 	dir: Direction,
 	size_init: union{int, ContainerResize},
 	border: Directions = nil,
+	scroll: bit_set[Orientation] = nil,
 ) {
-	// TODO(khvorov) Make optionally scrollable
 	size: int
 	sep_drag_ref: Maybe(f32)
 	resisable := false
@@ -276,6 +276,29 @@ begin_container :: proc(
 	} else {
 		rect = _take_rect(last_container(ui), dir, size)
 	}
+
+	if .Horizontal in scroll {
+		rect.dim.y -= ui.theme.sizes[.ScrollbarWidth]
+	}
+	if .Vertical in scroll {
+		rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
+	}
+
+	// TODO(khvorov) Finish scrolling
+	if .Horizontal in scroll {
+		track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Horizontal)
+		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
+		//cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
+		//_get_scroll_discrete(track, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min, bounding_rect)
+	}
+
+	if .Vertical in scroll {
+		track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
+		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
+		//cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
+		//_get_scroll_discrete(track, .Vertical, inc_init.y, total_step_count.y, thumb_size_min, bounding_rect)
+	}
+
 	append(&ui.container_stack, rect)
 	_cmd_outline(ui, rect, ui.theme.colors[.Border], border)
 
@@ -424,7 +447,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	_cmd_outline(ui, line_numbers_rect, ui.theme.colors[.Border], {.Right})
 
 	// NOTE(khvorov) Scrollbars
-	scrollbar_tracks := _position_scrollbar_tracks_outside(text_rect, ui.theme.sizes[.ScrollbarWidth])
+	scrollbar_tracks := _position_scrollbar_tracks(text_rect, ui.theme.sizes[.ScrollbarWidth])
 	for track in scrollbar_tracks {
 		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
 	}
@@ -758,12 +781,22 @@ _cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32, dirs: Directions = {.
 	}
 }
 
-_position_scrollbar_tracks_outside :: proc(rect: Rect2i, size: int) -> (tracks: [2]Rect2i) {
-	tracks = rect
-	tracks.x.topleft.y += rect.dim.y
-	tracks.x.dim.y = size
-	tracks.y.topleft.x += rect.dim.x
-	tracks.y.dim.x = size
+_position_scrollbar_track :: proc(rect: Rect2i, size: int, orientation: Orientation) -> Rect2i {
+	track := rect
+	switch orientation {
+	case .Horizontal:
+		track.topleft.y += rect.dim.y
+		track.dim.y = size
+	case .Vertical:
+		track.topleft.x += rect.dim.x
+		track.dim.x = size
+	}
+	return track
+}
+
+_position_scrollbar_tracks :: proc(rect: Rect2i, size: int) -> (tracks: [2]Rect2i) {
+	tracks.x = _position_scrollbar_track(rect, size, .Horizontal)
+	tracks.y = _position_scrollbar_track(rect, size, .Vertical)
 	return tracks
 }
 

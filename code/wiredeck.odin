@@ -42,7 +42,7 @@ main :: proc() {
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	window: Window
-	init_window(&window, "Wiredeck", 1000, 1000)
+	init_window(&window, "Wiredeck", 1000, 100)
 
 	renderer: Renderer
 	init_renderer(&renderer, 7680, 4320)
@@ -89,7 +89,7 @@ main :: proc() {
 			state.theme_editor_open = !state.theme_editor_open
 		}
 		if state.theme_editor_open {
-			begin_container(&ui, .Right, ui.total_dim.x / 2, {.Left})
+			begin_container(&ui, .Right, ui.total_dim.x / 2, {.Left}, {.Vertical, .Horizontal})
 
 			for color_id in ColorID {
 				color_id_string := tprintf("%v", color_id)
