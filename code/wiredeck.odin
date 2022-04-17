@@ -9,12 +9,14 @@ printf :: fmt.printf
 tprintf :: fmt.tprintf
 
 State :: struct {
-	opened_files:      [dynamic]OpenedFile,
-	editing:           Maybe(int),
-	sidebar_width:     int,
-	sidebar_drag_ref:  Maybe(f32),
+	opened_files: [dynamic]OpenedFile,
+	editing: Maybe(int),
+	sidebar_width: int,
+	sidebar_drag_ref: Maybe(f32),
 	theme_editor_open: bool,
 	color_picker_open: [ColorID]bool,
+	theme_editor_scroll_ref: Maybe(f32),
+	theme_editor_offset: int,
 }
 
 OpenedFile :: struct {
@@ -89,31 +91,40 @@ main :: proc() {
 			state.theme_editor_open = !state.theme_editor_open
 		}
 		if state.theme_editor_open {
-			begin_container(&ui, .Right, ui.total_dim.x / 2, {.Left}, {.Vertical, .Horizontal})
+			one_color_height := get_button_dim(&ui, "").y
 
-			for color_id in ColorID {
-				color_id_string := tprintf("%v", color_id)
-				button_dim := get_button_dim(&ui, color_id_string)
-				begin_container(&ui, .Top, button_dim.y)
-				ui.current_layout = .Horizontal
+			begin_container(
+				&ui, .Right, ui.total_dim.x / 2, {.Left},
+				ContainerScrollDiscrete{
+					.Vertical, &state.theme_editor_scroll_ref, &state.theme_editor_offset,
+					f32(one_color_height), len(ColorID) - 1,
+				},
+			)
 
-				button_state := button(ui = &ui, label_str = color_id_string, text_align = .Begin)
+			for color_id, index in ColorID {
+				if index >= state.theme_editor_offset {
+					color_id_string := tprintf("%v", color_id)
+					button_dim := get_button_dim(&ui, color_id_string)
+					begin_container(&ui, .Top, button_dim.y)
+					ui.current_layout = .Horizontal
 
-				begin_container(&ui, .Left, button_dim.y)
-				fill_container(&ui, ui.theme.colors[color_id])
-				end_container(&ui)
+					button_state := button(ui = &ui, label_str = color_id_string, text_align = .Begin)
 
-				if button_state == .Clicked {
-					state.color_picker_open[color_id] = !state.color_picker_open[color_id]
+					begin_container(&ui, .Left, button_dim.y)
+					fill_container(&ui, ui.theme.colors[color_id])
+					end_container(&ui)
+
+					if button_state == .Clicked {
+						state.color_picker_open[color_id] = !state.color_picker_open[color_id]
+					}
+
+					if state.color_picker_open[color_id] {
+						//println("draw color picker for", color_id)
+					}
+
+					end_container(&ui)
 				}
-
-				if state.color_picker_open[color_id] {
-					println("draw color picker for", color_id)
-				}
-
-				end_container(&ui)
 			}
-
 			end_container(&ui)
 		}
 

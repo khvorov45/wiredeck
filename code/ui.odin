@@ -126,6 +126,14 @@ ContainerResize :: struct {
 	sep_drag_ref: ^Maybe(f32),
 }
 
+ContainerScrollDiscrete :: struct {
+	orientation: Orientation,
+	ref: ^Maybe(f32),
+	offset: ^int,
+	inc: f32,
+	step_count: int,
+}
+
 init_ui :: proc(
 	ui: ^UI, width, height: int, input: ^Input,
 	monospace_font: ^Font, varwidth_font: ^Font,
@@ -202,7 +210,7 @@ begin_container :: proc(
 	dir: Direction,
 	size_init: union{int, ContainerResize},
 	border: Directions = nil,
-	scroll: bit_set[Orientation] = nil,
+	scroll_spec: Maybe(ContainerScrollDiscrete) = nil,
 ) {
 	size: int
 	sep_drag_ref: Maybe(f32)
@@ -277,26 +285,44 @@ begin_container :: proc(
 		rect = _take_rect(last_container(ui), dir, size)
 	}
 
-	if .Horizontal in scroll {
-		rect.dim.y -= ui.theme.sizes[.ScrollbarWidth]
-	}
-	if .Vertical in scroll {
-		rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
-	}
+	if scroll_spec != nil {
+		bounding_rect := rect
+		scroll := scroll_spec.(ContainerScrollDiscrete)
 
-	// TODO(khvorov) Finish scrolling
-	if .Horizontal in scroll {
-		track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Horizontal)
-		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
-		//cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
-		//_get_scroll_discrete(track, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min, bounding_rect)
-	}
+		// TODO(khvorov) Finish scrolling (including supporting both vertical and horizontal)
+		switch scroll.orientation {
 
-	if .Vertical in scroll {
-		track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
-		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
-		//cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
-		//_get_scroll_discrete(track, .Vertical, inc_init.y, total_step_count.y, thumb_size_min, bounding_rect)
+		case .Horizontal: unimplemented()
+
+		case .Vertical:
+			rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
+			track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
+			append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
+
+			scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
+
+			scroll_discrete := _get_scroll_discrete(
+				track, .Vertical, scroll.inc, scroll.step_count,
+				ui.theme.sizes[.ScrollbarThumbLengthMin], bounding_rect,
+			)
+
+			line_offset, line_offset_delta :=
+				_get_scroll_offset_and_delta(ui.input, scroll_ref, scroll.offset^, scroll_discrete)
+
+			thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_discrete)
+			thumb_state := _get_rect_mouse_state(ui.input, thumb_rect)
+			thumb_color := _get_scroll_thumb_col(ui, thumb_state)
+			append(ui.current_cmd_buffer, UICommandRect{thumb_rect, thumb_color})
+
+			scroll.ref^ = _update_scroll_ref(
+				ui.input, thumb_state, scroll.ref^, line_offset_delta, scroll_discrete,
+			)
+			scroll.offset^ = line_offset
+
+			if scroll.ref^ != nil {
+				ui.should_capture_mouse = true
+			}
+		}
 	}
 
 	append(&ui.container_stack, rect)
@@ -800,25 +826,32 @@ _position_scrollbar_tracks :: proc(rect: Rect2i, size: int) -> (tracks: [2]Rect2
 	return tracks
 }
 
-_clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -> [2]Maybe(f32) {
-	refs := refs_init
-
-	if refs_init.x != nil {
-		refs.x = clamp(
-			refs_init.x.(f32),
-			f32(scroll_tracks.x.topleft.x),
-			f32(scroll_tracks.x.topleft.x + scroll_tracks.x.dim.x),
+_clamp_scroll_ref :: proc(track: Rect2i, ref_init: Maybe(f32), orientation: Orientation) -> Maybe(f32) {
+	ref := ref_init
+	switch orientation {
+	case .Horizontal:
+	if ref_init != nil {
+		ref = clamp(
+			ref_init.(f32),
+			f32(track.topleft.x),
+			f32(track.topleft.x + track.dim.x),
 		)
 	}
-
-	if refs_init.y != nil {
-		refs.y = clamp(
-			refs_init.y.(f32),
-			f32(scroll_tracks.y.topleft.y),
-			f32(scroll_tracks.y.topleft.y + scroll_tracks.y.dim.y),
+	case .Vertical:
+	if ref_init != nil {
+		ref = clamp(
+			ref_init.(f32),
+			f32(track.topleft.y),
+			f32(track.topleft.y + track.dim.y),
 		)
 	}
+	}
+	return ref
+}
 
+_clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -> (refs: [2]Maybe(f32)) {
+	refs.x = _clamp_scroll_ref(scroll_tracks.x, refs_init.x, .Horizontal)
+	refs.y = _clamp_scroll_ref(scroll_tracks.y, refs_init.y, .Vertical)
 	return refs
 }
 

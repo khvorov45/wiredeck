@@ -256,7 +256,10 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 		}
 		if window.is_focused || window.is_mouse_captured {
 			window.platform.input_modified = true
-			input.cursor_pos = [2]int{int(win.LOWORD(win.DWORD(event.lParam))), int(win.HIWORD(win.DWORD(event.lParam)))}
+			input.cursor_pos = [2]int{
+				int(transmute(i16)win.LOWORD(win.DWORD(event.lParam))), 
+				int(transmute(i16)win.HIWORD(win.DWORD(event.lParam))),
+			}
 		}
 
 	case win.WM_PAINT:
