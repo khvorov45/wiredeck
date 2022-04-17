@@ -44,7 +44,7 @@ main :: proc() {
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	window: Window
-	init_window(&window, "Wiredeck", 1000, 100)
+	init_window(&window, "Wiredeck", 1000, 1000)
 
 	renderer: Renderer
 	init_renderer(&renderer, 7680, 4320)
@@ -95,35 +95,34 @@ main :: proc() {
 
 			begin_container(
 				&ui, .Right, ui.total_dim.x / 2, {.Left},
-				ContainerScrollDiscrete{
-					.Vertical, &state.theme_editor_scroll_ref, &state.theme_editor_offset,
-					f32(one_color_height), len(ColorID) - 1,
+				ContainerScroll{
+					one_color_height * len(ColorID),
+					&state.theme_editor_offset,
+					&state.theme_editor_scroll_ref,
 				},
 			)
 
 			for color_id, index in ColorID {
-				if index >= state.theme_editor_offset {
-					color_id_string := tprintf("%v", color_id)
-					button_dim := get_button_dim(&ui, color_id_string)
-					begin_container(&ui, .Top, button_dim.y)
-					ui.current_layout = .Horizontal
+				color_id_string := tprintf("%v", color_id)
+				button_dim := get_button_dim(&ui, color_id_string)
+				begin_container(&ui, .Top, button_dim.y)
+				ui.current_layout = .Horizontal
 
-					button_state := button(ui = &ui, label_str = color_id_string, text_align = .Begin)
+				button_state := button(ui = &ui, label_str = color_id_string, text_align = .Begin)
 
-					begin_container(&ui, .Left, button_dim.y)
-					fill_container(&ui, ui.theme.colors[color_id])
-					end_container(&ui)
+				begin_container(&ui, .Left, button_dim.y)
+				fill_container(&ui, ui.theme.colors[color_id])
+				end_container(&ui)
 
-					if button_state == .Clicked {
-						state.color_picker_open[color_id] = !state.color_picker_open[color_id]
-					}
-
-					if state.color_picker_open[color_id] {
-						//println("draw color picker for", color_id)
-					}
-
-					end_container(&ui)
+				if button_state == .Clicked {
+					state.color_picker_open[color_id] = !state.color_picker_open[color_id]
 				}
+
+				if state.color_picker_open[color_id] {
+					//println("draw color picker for", color_id)
+				}
+
+				end_container(&ui)
 			}
 			end_container(&ui)
 		}

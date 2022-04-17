@@ -11,7 +11,7 @@ UI :: struct {
 	theme:                Theme,
 	total_dim:            [2]int,
 	current_layout:       Orientation,
-	container_stack:      [dynamic]Rect2i,
+	container_stack:      [dynamic]Container,
 	commands:             [dynamic]UICommand,
 	last_element_rect:    Rect2i,
 	floating:             Maybe(Rect2i),
@@ -21,6 +21,11 @@ UI :: struct {
 	arena_allocator:      mem.Allocator,
 	should_capture_mouse: bool,
 	req_cursor:           CursorKind,
+}
+
+Container :: struct {
+	rect: Rect2i,
+	offset: int,
 }
 
 Theme :: struct {
@@ -93,7 +98,7 @@ UICommand :: union {
 }
 
 UICommandRect :: struct {
-	rect:  Rect2i,
+	rect: Rect2i,
 	color: [4]f32,
 }
 
@@ -121,17 +126,23 @@ ScrollDiscrete :: struct {
 	bounding_rect: Rect2i,
 }
 
+ScrollContinuous :: struct {
+	offset_delta_per_px_scroll: f32,
+	range: int,
+	thumb_size: int,
+	track: Rect2i,
+	bounding_rect: Rect2i,
+}
+
 ContainerResize :: struct {
 	size: ^int,
 	sep_drag_ref: ^Maybe(f32),
 }
 
-ContainerScrollDiscrete :: struct {
-	orientation: Orientation,
-	ref: ^Maybe(f32),
+ContainerScroll :: struct {
+	height: int,
 	offset: ^int,
-	inc: f32,
-	step_count: int,
+	ref: ^Maybe(f32),
 }
 
 init_ui :: proc(
@@ -173,7 +184,7 @@ init_ui :: proc(
 		theme = theme,
 		total_dim = [2]int{width, height},
 		current_layout = .Horizontal,
-		container_stack = buffer_from_slice(make([]Rect2i, 100)),
+		container_stack = buffer_from_slice(make([]Container, 100)),
 		commands = buffer_from_slice(make([]UICommand, 1000)),
 		last_element_rect = Rect2i{},
 		floating = nil,
@@ -189,7 +200,7 @@ ui_begin :: proc(ui: ^UI) {
 	clear(&ui.commands)
 	clear(&ui.container_stack)
 	root_rect := Rect2i{{0, 0}, ui.total_dim}
-	append(&ui.container_stack, root_rect)
+	append(&ui.container_stack, Container{root_rect, 0})
 	ui.last_element_rect = Rect2i{}
 	ui.floating = nil
 	clear(&ui.floating_cmd)
@@ -210,7 +221,7 @@ begin_container :: proc(
 	dir: Direction,
 	size_init: union{int, ContainerResize},
 	border: Directions = nil,
-	scroll_spec: Maybe(ContainerScrollDiscrete) = nil,
+	scroll_spec: Maybe(ContainerScroll) = nil,
 ) {
 	size: int
 	sep_drag_ref: Maybe(f32)
@@ -232,12 +243,12 @@ begin_container :: proc(
 
 		size = max(size, 0)
 		last_container_rect := last_container(ui)^
-		container_rect_init := _take_rect(&last_container_rect, dir, size + ui.theme.sizes[.Separator])
+		container_rect_init := Container{_take_rect(&last_container_rect, dir, size + ui.theme.sizes[.Separator]), 0}
 		separator_rect_init := _take_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
 
-		size = container_rect_init.dim.y
+		size = container_rect_init.rect.dim.y
 		if sep_is_vertical {
-			size = container_rect_init.dim.x
+			size = container_rect_init.rect.dim.x
 		}
 
 		separator_state := _get_rect_mouse_state(ui.input, separator_rect_init)
@@ -255,9 +266,9 @@ begin_container :: proc(
 		} else {
 			if ui.input.keys[.MouseLeft].ended_down {
 				delta := cur_cursor - sep_drag_ref.(f32)
-				max_size := last_container(ui).dim.y
+				max_size := last_container(ui).rect.dim.y
 				if sep_is_vertical {
-					max_size = last_container(ui).dim.x
+					max_size = last_container(ui).rect.dim.x
 				}
 				new_size := clamp(size + int(delta), 0, max_size - ui.theme.sizes[.Separator])
 				delta = f32(new_size - size)
@@ -278,54 +289,51 @@ begin_container :: proc(
 
 	rect: Rect2i
 	if resisable {
-		rect = _take_rect(last_container(ui), dir, size + ui.theme.sizes[.Separator])
-		sep_rect := _take_rect(&rect, dir_opposite(dir), ui.theme.sizes[.Separator])
+		container := Container{_take_rect(last_container(ui), dir, size + ui.theme.sizes[.Separator]), 0}
+		sep_rect := _take_rect(&container, dir_opposite(dir), ui.theme.sizes[.Separator])
+		rect = container.rect
 		append(ui.current_cmd_buffer, UICommandRect{sep_rect, ui.theme.colors[.Border]})
 	} else {
 		rect = _take_rect(last_container(ui), dir, size)
 	}
 
+	scroll_offset := 0
 	if scroll_spec != nil {
 		bounding_rect := rect
-		scroll := scroll_spec.(ContainerScrollDiscrete)
+		scroll := scroll_spec.(ContainerScroll)
 
-		// TODO(khvorov) Finish scrolling (including supporting both vertical and horizontal)
-		switch scroll.orientation {
+		rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
+		track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
+		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
 
-		case .Horizontal: unimplemented()
+		scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
 
-		case .Vertical:
-			rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
-			track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
-			append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
+		scroll_continuous := _get_scroll_continuous(
+			track, scroll.height,
+			ui.theme.sizes[.ScrollbarThumbLengthMin], bounding_rect,
+		)
 
-			scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
+		line_offset, line_offset_delta :=
+			_get_scroll_offset_and_delta_continuos(ui.input, scroll_ref, scroll.offset^, scroll_continuous)
 
-			scroll_discrete := _get_scroll_discrete(
-				track, .Vertical, scroll.inc, scroll.step_count,
-				ui.theme.sizes[.ScrollbarThumbLengthMin], bounding_rect,
-			)
+		thumb_rect := _get_scroll_thumb_rect_continous(line_offset, scroll_continuous)
+		thumb_state := _get_rect_mouse_state(ui.input, thumb_rect)
+		thumb_color := _get_scroll_thumb_col(ui, thumb_state)
+		append(ui.current_cmd_buffer, UICommandRect{thumb_rect, thumb_color})
 
-			line_offset, line_offset_delta :=
-				_get_scroll_offset_and_delta(ui.input, scroll_ref, scroll.offset^, scroll_discrete)
+		scroll.ref^ = _update_scroll_ref_continuos(
+			ui.input, thumb_state, scroll.ref^, line_offset_delta, scroll_continuous,
+		)
+		scroll.offset^ = line_offset
 
-			thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_discrete)
-			thumb_state := _get_rect_mouse_state(ui.input, thumb_rect)
-			thumb_color := _get_scroll_thumb_col(ui, thumb_state)
-			append(ui.current_cmd_buffer, UICommandRect{thumb_rect, thumb_color})
-
-			scroll.ref^ = _update_scroll_ref(
-				ui.input, thumb_state, scroll.ref^, line_offset_delta, scroll_discrete,
-			)
-			scroll.offset^ = line_offset
-
-			if scroll.ref^ != nil {
-				ui.should_capture_mouse = true
-			}
+		if scroll.ref^ != nil {
+			ui.should_capture_mouse = true
 		}
+
+		scroll_offset = int(f32(scroll.offset^) * scroll_continuous.offset_delta_per_px_scroll)
 	}
 
-	append(&ui.container_stack, rect)
+	append(&ui.container_stack, Container{rect, scroll_offset})
 	_cmd_outline(ui, rect, ui.theme.colors[.Border], border)
 
 	if resisable {
@@ -371,7 +379,7 @@ begin_floating :: proc(ui: ^UI, dir: Direction, dim: [2]int, ref: ^Rect2i = nil)
 			rect.topleft.y = ref.topleft.y
 		}
 
-		append(&ui.container_stack, rect)
+		append(&ui.container_stack, Container{rect, 0})
 
 		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundFloating]})
 		_cmd_outline(ui, rect, ui.theme.colors[.Border])
@@ -412,6 +420,7 @@ button :: proc(
 		dir = .Top
 	}
 
+	bounding_rect := last_container(ui).rect
 	rect := _take_rect(last_container(ui), dir, size)
 	ui.last_element_rect = rect
 	if process_input {
@@ -641,8 +650,8 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 }
 
 fill_container :: proc(ui: ^UI, color: [4]f32) {
-	rect := last_container(ui)
-	append(ui.current_cmd_buffer, UICommandRect{rect^, color})
+	rect := last_container(ui).rect
+	append(ui.current_cmd_buffer, UICommandRect{rect, color})
 }
 
 get_button_pad :: proc(ui: ^UI) -> [2][2]int {
@@ -672,7 +681,7 @@ point_inside_rect :: proc(point: [2]int, rect: Rect2i) -> bool {
 	return result
 }
 
-last_container :: proc(ui: ^UI) -> ^Rect2i {
+last_container :: proc(ui: ^UI) -> ^Container {
 	result := &ui.container_stack[len(ui.container_stack) - 1]
 	return result
 }
@@ -697,8 +706,10 @@ get_rect_center_f32 :: proc(rect: Rect2i) -> [2]f32 {
 	return result
 }
 
-_take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> Rect2i {
-	rect := _peek_rect(from, dir, size_init)
+_take_rect :: proc(from_container: ^Container, dir: Direction, size_init: int) -> Rect2i {
+	rect := _peek_rect(from_container, dir, size_init)
+
+	from := &from_container.rect
 
 	size: int
 	switch dir {
@@ -725,7 +736,11 @@ _take_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> Rect2i {
 	return rect
 }
 
-_peek_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i) {
+_peek_rect :: proc(from_container: ^Container, dir: Direction, size_init: int) -> (rect: Rect2i) {
+
+	from := from_container.rect
+	from.topleft.y -= from_container.offset
+	from.dim.y += from_container.offset
 
 	size: int
 	switch dir {
@@ -756,10 +771,10 @@ _peek_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect
 	return rect
 }
 
-_take_entire_rect :: proc(from: ^Rect2i) -> Rect2i {
-	result := from^
-	from.topleft += from.dim
-	from.dim = 0
+_take_entire_rect :: proc(from: ^Container) -> Rect2i {
+	result := from.rect
+	from.rect.topleft += from.rect.dim
+	from.rect.dim = 0
 	return result
 }
 
@@ -855,6 +870,25 @@ _clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -
 	return refs
 }
 
+_get_scroll_continuous :: proc(
+	track: Rect2i, height, thumb_size_min: int,
+	bounding_rect: Rect2i,
+) -> (result: ScrollContinuous) {
+	track_len := _get_scroll_track_len(track, .Vertical)
+	if height <= track_len {
+		result = ScrollContinuous{0, 0, track_len, track, bounding_rect}
+	} else {
+		range := height - track_len
+		thumb_size := track_len - range
+		if thumb_size < thumb_size_min {
+			thumb_size = thumb_size_min
+			range = track_len - thumb_size
+		}
+		result = ScrollContinuous{f32(height - track_len) / f32(range), range, thumb_size, track, bounding_rect}
+	}
+	return result
+}
+
 _get_scroll_discrete :: proc(
 	track: Rect2i, orientation: Orientation, inc_init: f32, total_step_count_init, thumb_size_min: int,
 	bounding_rect: Rect2i,
@@ -919,6 +953,11 @@ _clamp_scroll_offset :: proc(offset_init: int, settings: ScrollDiscrete) -> int 
 	return offset
 }
 
+_clamp_scroll_offset_continuous :: proc(offset_init: int, settings: ScrollContinuous) -> int {
+	offset := clamp(offset_init, 0, settings.range)
+	return offset
+}
+
 _get_scroll_thumb_rect :: proc(offset: int, settings: ScrollDiscrete) -> Rect2i {
 	rect := settings.track
 	start := _get_scroll_discrete_start(offset, settings)
@@ -933,6 +972,14 @@ _get_scroll_thumb_rect :: proc(offset: int, settings: ScrollDiscrete) -> Rect2i 
 	return rect
 }
 
+_get_scroll_thumb_rect_continous :: proc(offset: int, settings: ScrollContinuous) -> Rect2i {
+	rect := settings.track
+	start := _clamp_scroll_offset_continuous(offset, settings)
+	rect.topleft.y = start
+	rect.dim.y = settings.thumb_size
+	return rect
+}
+
 _get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollDiscrete) -> int {
 	cursor_pos: int
 	switch settings.orientation {
@@ -940,6 +987,41 @@ _get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollDiscrete) -> int {
 	case .Vertical: cursor_pos = input.cursor_pos.y
 	}
 	return cursor_pos
+}
+
+_get_scroll_offset_and_delta_continuos :: proc(
+	input: ^Input, scroll_ref: Maybe(f32), old_offset_init: int, settings: ScrollContinuous,
+) -> (offset: int, delta: int) {
+
+	old_offset := _clamp_scroll_offset_continuous(old_offset_init, settings)
+	old_thumb_rect := _get_scroll_thumb_rect_continous(old_offset, settings)
+	old_thumb_state := _get_rect_mouse_state(input, old_thumb_rect)
+
+	offset_delta := 0
+	rect_state := _get_rect_mouse_state(input, settings.track)
+
+	cursor_pos := input.cursor_pos.y
+
+	// NOTE(sen) Drag the scroll thumb
+	if scroll_ref != nil {
+		scroll_delta_px := f32(cursor_pos) - scroll_ref.(f32)
+		offset_delta = int(scroll_delta_px)
+
+	// NOTE(sen) Click on track
+	} else if old_thumb_state == .Normal && rect_state == .Pressed {
+		center2 := get_rect_center_f32(old_thumb_rect)
+		center := center2.y
+		scroll_delta_px := f32(cursor_pos) - center
+		offset_delta = int(scroll_delta_px)
+
+	// NOTE(sen) Scroll wheel
+	} else if point_inside_rect(input.cursor_pos, settings.bounding_rect) {
+		offset_delta = input.scroll.y
+	}
+
+	offset = _clamp_scroll_offset_continuous(old_offset + offset_delta, settings)
+	delta = offset - old_offset
+	return offset, delta
 }
 
 _get_scroll_offset_and_delta :: proc(
@@ -1011,3 +1093,24 @@ _update_scroll_ref :: proc(
 
 	return ref
 }
+
+_update_scroll_ref_continuos :: proc(
+	input: ^Input, thumb_state: MouseState, ref_init: Maybe(f32),
+	offset_delta: int, settings: ScrollContinuous,
+) -> Maybe(f32) {
+
+	cursor_pos := input.cursor_pos.y
+	ref := ref_init
+	if thumb_state == .Pressed && ref == nil {
+		ref = f32(cursor_pos)
+	} else if ref != nil {
+		if !input.keys[.MouseLeft].ended_down {
+			ref = nil
+		} else {
+			ref = ref.(f32) + f32(offset_delta)
+		}
+	}
+
+	return ref
+}
+
