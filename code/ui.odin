@@ -172,7 +172,7 @@ init_ui :: proc(
 		current_cmd_buffer = nil,
 	}
 
-	mem.init_arena(&ui.arena, make([]u8, mem.megabytes(4)))
+	mem.init_arena(&ui.arena, make([]u8, 4 * MEGABYTE))
 	ui.arena_allocator = mem.arena_allocator(&ui.arena)
 }
 
@@ -396,7 +396,7 @@ button :: proc(
 	}
 	append(
 		ui.current_cmd_buffer,
-		UICommandTextline{label_str, .Varwidth, text_topleft, rect, col},
+		UICommandTextline{strings.clone(label_str, ui.arena_allocator), .Varwidth, text_topleft, rect, col},
 	)
 
 	return state
