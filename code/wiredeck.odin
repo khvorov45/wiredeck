@@ -157,7 +157,6 @@ main :: proc() {
 		// SECTION Render
 		//
 
-
 		for cmd_ui in ui.commands {
 			switch cmd in cmd_ui {
 			case UICommandRect:
