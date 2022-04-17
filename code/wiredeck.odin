@@ -154,7 +154,7 @@ main :: proc() {
 		ui_end(&ui)
 
 		//
-		// NOTE(khvorov) Render
+		// SECTION Render
 		//
 
 
