@@ -118,6 +118,7 @@ ScrollDiscrete :: struct {
 	total_step_count: int,
 	track: Rect2i,
 	orientation: Orientation,
+	bounding_rect: Rect2i,
 }
 
 ContainerResize :: struct {
@@ -202,7 +203,7 @@ begin_container :: proc(
 	size_init: union{int, ContainerResize},
 	border: Directions = nil,
 ) {
-
+	// TODO(khvorov) Make optionally scrollable
 	size: int
 	sep_drag_ref: Maybe(f32)
 	resisable := false
@@ -434,6 +435,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		[2]f32{f32(ui.theme.sizes[.ScrollbarIncPerCol]), f32(ui.theme.sizes[.ScrollbarIncPerLine])},
 		[2]int{file.max_col_width_glyphs - text_rect.dim.x / ui.monospace_px_width, line_count - 1},
 		ui.theme.sizes[.ScrollbarThumbLengthMin],
+		text_area_rect,
 	)
 
 	line_offset, line_offset_delta :=
@@ -568,7 +570,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 			current_num_topleft := [2]int{current_topleft_x_num, current_topleft_y}
 			append(
 				ui.current_cmd_buffer,
-				UICommandTextline{num_string, .Monospace, current_num_topleft, line_numbers_rect, ui.theme.text_colors[.Comment]},
+				UICommandTextline{num_string, .Monospace, current_num_topleft, line_numbers_rect, ui.theme.colors[.LineNumber]},
 			)
 			current_line_number += 1
 			current_topleft_y += ui.fonts[.Monospace].px_height_line
@@ -587,6 +589,11 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	if cursor_scroll_ref.y != nil || cursor_scroll_ref.x != nil {
 		ui.should_capture_mouse = true
 	}
+}
+
+fill_container :: proc(ui: ^UI, color: [4]f32) {
+	rect := last_container(ui)
+	append(ui.current_cmd_buffer, UICommandRect{rect^, color})
 }
 
 get_button_pad :: proc(ui: ^UI) -> [2][2]int {
@@ -784,6 +791,7 @@ _clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -
 
 _get_scroll_discrete :: proc(
 	track: Rect2i, orientation: Orientation, inc_init: f32, total_step_count_init, thumb_size_min: int,
+	bounding_rect: Rect2i,
 ) -> ScrollDiscrete {
 	total_step_count := max(total_step_count_init, 0)
 	inc := inc_init
@@ -797,7 +805,7 @@ _get_scroll_discrete :: proc(
 			inc = f32(range) / f32(total_step_count)
 		}
 	}
-	result := ScrollDiscrete{inc, range, thumb_size, total_step_count, track, orientation}
+	result := ScrollDiscrete{inc, range, thumb_size, total_step_count, track, orientation, bounding_rect}
 	return result
 }
 
@@ -821,9 +829,10 @@ _get_scroll_track_start :: proc(track: Rect2i, orientation: Orientation) -> int 
 
 _get_scroll_discrete2 :: proc(
 	tracks: [2]Rect2i, inc_init: [2]f32, total_step_count: [2]int, thumb_size_min: int,
+	bounding_rect: Rect2i,
 ) -> (result: [2]ScrollDiscrete) {
-	result.x = _get_scroll_discrete(tracks.x, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min)
-	result.y = _get_scroll_discrete(tracks.y, .Vertical, inc_init.y, total_step_count.y, thumb_size_min)
+	result.x = _get_scroll_discrete(tracks.x, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min, bounding_rect)
+	result.y = _get_scroll_discrete(tracks.y, .Vertical, inc_init.y, total_step_count.y, thumb_size_min, bounding_rect)
 	return result
 }
 
@@ -897,7 +906,7 @@ _get_scroll_offset_and_delta :: proc(
 		offset_delta = int(scroll_delta_px / settings.inc)
 
 	// NOTE(sen) Scroll wheel
-	} else {
+	} else if point_inside_rect(input.cursor_pos, settings.bounding_rect) {
 		switch settings.orientation {
 		case .Horizontal: offset_delta = input.scroll.x
 		case .Vertical: offset_delta = input.scroll.y

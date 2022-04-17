@@ -14,6 +14,7 @@ State :: struct {
 	sidebar_width:     int,
 	sidebar_drag_ref:  Maybe(f32),
 	theme_editor_open: bool,
+	color_picker_open: [ColorID]bool,
 }
 
 OpenedFile :: struct {
@@ -70,13 +71,13 @@ main :: proc() {
 	for window.is_running {
 
 		//
-		// NOTE(khvorov) Input
+		// SECTION Input
 		//
 
 		wait_for_input(&window, &input)
 
 		//
-		// NOTE(khvorov) UI
+		// SECTION UI
 		//
 
 		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
@@ -89,11 +90,28 @@ main :: proc() {
 		}
 		if state.theme_editor_open {
 			begin_container(&ui, .Right, ui.total_dim.x / 2, {.Left})
-			ui.current_layout = .Vertical
 
 			for color_id in ColorID {
 				color_id_string := tprintf("%v", color_id)
-				button(ui = &ui, label_str = color_id_string, text_align = .Begin)
+				button_dim := get_button_dim(&ui, color_id_string)
+				begin_container(&ui, .Top, button_dim.y)
+				ui.current_layout = .Horizontal
+
+				button_state := button(ui = &ui, label_str = color_id_string, text_align = .Begin)
+
+				begin_container(&ui, .Left, button_dim.y)
+				fill_container(&ui, ui.theme.colors[color_id])
+				end_container(&ui)
+
+				if button_state == .Clicked {
+					state.color_picker_open[color_id] = !state.color_picker_open[color_id]
+				}
+
+				if state.color_picker_open[color_id] {
+					println("draw color picker for", color_id)
+				}
+
+				end_container(&ui)
 			}
 
 			end_container(&ui)
