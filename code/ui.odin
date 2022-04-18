@@ -64,6 +64,7 @@ SizeID :: enum {
 	ScrollbarThumbLengthMin,
 	ScrollbarIncPerLine,
 	ScrollbarIncPerCol,
+	ScrollContPxPerWheelInc,
 }
 
 Rect2i :: struct {
@@ -131,6 +132,7 @@ ScrollDiscrete :: struct {
 
 ScrollContinuous :: struct {
 	offset_delta_per_px_scroll: f32,
+	px_scroll_per_wheel_inc: int,
 }
 
 ScrollSpec :: struct {
@@ -183,6 +185,7 @@ init_ui :: proc(
 	theme.sizes[.ScrollbarThumbLengthMin] = 40
 	theme.sizes[.ScrollbarIncPerLine] = 20
 	theme.sizes[.ScrollbarIncPerCol] = 20
+	theme.sizes[.ScrollContPxPerWheelInc] = 10
 
 	fonts: [FontID]^Font
 	fonts[.Monospace] = monospace_font
@@ -320,8 +323,11 @@ begin_container :: proc(
 		scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
 
 		scroll_continuous := _get_scroll_continuous(
-			track, scroll.height,
-			ui.theme.sizes[.ScrollbarThumbLengthMin], bounding_rect,
+			track, 
+			scroll.height,
+			ui.theme.sizes[.ScrollbarThumbLengthMin], 
+			ui.theme.sizes[.ScrollContPxPerWheelInc],
+			bounding_rect,
 		)
 
 		line_offset, line_offset_delta :=
@@ -883,12 +889,12 @@ _clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -
 }
 
 _get_scroll_continuous :: proc(
-	track: Rect2i, height, thumb_size_min: int,
+	track: Rect2i, height, thumb_size_min, px_scroll_per_wheel_inc: int,
 	bounding_rect: Rect2i,
 ) -> (result: ScrollSpec) {
 	track_len := _get_scroll_track_len(track, .Vertical)
 	if height <= track_len {
-		result = ScrollSpec{.Vertical, 0, track_len, track, bounding_rect, ScrollContinuous{0}}
+		result = ScrollSpec{.Vertical, 0, track_len, track, bounding_rect, ScrollContinuous{}}
 	} else {
 		range := height - track_len
 		thumb_size := track_len - range
@@ -898,7 +904,7 @@ _get_scroll_continuous :: proc(
 		}
 		result = ScrollSpec{
 			.Vertical, range, thumb_size, track, bounding_rect,
-			ScrollContinuous{f32(height - track_len) / f32(range)},
+			ScrollContinuous{f32(height - track_len) / f32(range), px_scroll_per_wheel_inc},
 		}
 	}
 	return result
@@ -1042,6 +1048,9 @@ _get_scroll_offset_and_delta :: proc(
 		switch settings.orientation {
 		case .Horizontal: offset_delta = input.scroll.x
 		case .Vertical: offset_delta = input.scroll.y
+		}
+		if val, ok := settings.specific.(ScrollContinuous); ok {
+			offset_delta *= val.px_scroll_per_wheel_inc
 		}
 	}
 
