@@ -116,22 +116,33 @@ Align :: enum {
 	End,
 }
 
-ScrollDiscrete :: struct {
-	inc: f32,
+ScrollCommon :: struct {
+	orientation: Orientation,
 	range: int,
 	thumb_size: int,
-	total_step_count: int,
 	track: Rect2i,
-	orientation: Orientation,
 	bounding_rect: Rect2i,
+}
+
+ScrollDiscrete :: struct {
+	inc: f32,
+	total_step_count: int,
 }
 
 ScrollContinuous :: struct {
 	offset_delta_per_px_scroll: f32,
+}
+
+ScrollSpec :: struct {
+	orientation: Orientation,
 	range: int,
 	thumb_size: int,
 	track: Rect2i,
 	bounding_rect: Rect2i,
+	specific: union {
+		ScrollDiscrete,
+		ScrollContinuous,
+	},
 }
 
 ContainerResize :: struct {
@@ -314,14 +325,14 @@ begin_container :: proc(
 		)
 
 		line_offset, line_offset_delta :=
-			_get_scroll_offset_and_delta_continuos(ui.input, scroll_ref, scroll.offset^, scroll_continuous)
+			_get_scroll_offset_and_delta(ui.input, scroll_ref, scroll.offset^, scroll_continuous)
 
-		thumb_rect := _get_scroll_thumb_rect_continous(line_offset, scroll_continuous)
+		thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_continuous)
 		thumb_state := _get_rect_mouse_state(ui.input, thumb_rect)
 		thumb_color := _get_scroll_thumb_col(ui, thumb_state)
 		append(ui.current_cmd_buffer, UICommandRect{thumb_rect, thumb_color})
 
-		scroll.ref^ = _update_scroll_ref_continuos(
+		scroll.ref^ = _update_scroll_ref(
 			ui.input, thumb_state, scroll.ref^, line_offset_delta, scroll_continuous,
 		)
 		scroll.offset^ = line_offset
@@ -330,7 +341,8 @@ begin_container :: proc(
 			ui.should_capture_mouse = true
 		}
 
-		scroll_offset = int(f32(scroll.offset^) * scroll_continuous.offset_delta_per_px_scroll)
+		scroll_rate := scroll_continuous.specific.(ScrollContinuous).offset_delta_per_px_scroll
+		scroll_offset = int(f32(scroll.offset^) * scroll_rate)
 	}
 
 	append(&ui.container_stack, Container{rect, scroll_offset})
@@ -873,10 +885,10 @@ _clamp_scroll_refs :: proc(scroll_tracks: [2]Rect2i, refs_init: [2]Maybe(f32)) -
 _get_scroll_continuous :: proc(
 	track: Rect2i, height, thumb_size_min: int,
 	bounding_rect: Rect2i,
-) -> (result: ScrollContinuous) {
+) -> (result: ScrollSpec) {
 	track_len := _get_scroll_track_len(track, .Vertical)
 	if height <= track_len {
-		result = ScrollContinuous{0, 0, track_len, track, bounding_rect}
+		result = ScrollSpec{.Vertical, 0, track_len, track, bounding_rect, ScrollContinuous{0}}
 	} else {
 		range := height - track_len
 		thumb_size := track_len - range
@@ -884,7 +896,10 @@ _get_scroll_continuous :: proc(
 			thumb_size = thumb_size_min
 			range = track_len - thumb_size
 		}
-		result = ScrollContinuous{f32(height - track_len) / f32(range), range, thumb_size, track, bounding_rect}
+		result = ScrollSpec{
+			.Vertical, range, thumb_size, track, bounding_rect,
+			ScrollContinuous{f32(height - track_len) / f32(range)},
+		}
 	}
 	return result
 }
@@ -892,7 +907,7 @@ _get_scroll_continuous :: proc(
 _get_scroll_discrete :: proc(
 	track: Rect2i, orientation: Orientation, inc_init: f32, total_step_count_init, thumb_size_min: int,
 	bounding_rect: Rect2i,
-) -> ScrollDiscrete {
+) -> ScrollSpec {
 	total_step_count := max(total_step_count_init, 0)
 	inc := inc_init
 	range := total_step_count * int(inc)
@@ -905,7 +920,19 @@ _get_scroll_discrete :: proc(
 			inc = f32(range) / f32(total_step_count)
 		}
 	}
-	result := ScrollDiscrete{inc, range, thumb_size, total_step_count, track, orientation, bounding_rect}
+	result := ScrollSpec{
+		orientation, range, thumb_size, track, bounding_rect,
+		ScrollDiscrete{inc, total_step_count},
+	}
+	return result
+}
+
+_get_scroll_discrete2 :: proc(
+	tracks: [2]Rect2i, inc_init: [2]f32, total_step_count: [2]int, thumb_size_min: int,
+	bounding_rect: Rect2i,
+) -> (result: [2]ScrollSpec) {
+	result.x = _get_scroll_discrete(tracks.x, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min, bounding_rect)
+	result.y = _get_scroll_discrete(tracks.y, .Vertical, inc_init.y, total_step_count.y, thumb_size_min, bounding_rect)
 	return result
 }
 
@@ -927,40 +954,33 @@ _get_scroll_track_start :: proc(track: Rect2i, orientation: Orientation) -> int 
 	return result
 }
 
-_get_scroll_discrete2 :: proc(
-	tracks: [2]Rect2i, inc_init: [2]f32, total_step_count: [2]int, thumb_size_min: int,
-	bounding_rect: Rect2i,
-) -> (result: [2]ScrollDiscrete) {
-	result.x = _get_scroll_discrete(tracks.x, .Horizontal, inc_init.x, total_step_count.x, thumb_size_min, bounding_rect)
-	result.y = _get_scroll_discrete(tracks.y, .Vertical, inc_init.y, total_step_count.y, thumb_size_min, bounding_rect)
-	return result
+_clamp_scroll_offset :: proc(offset_init: int, settings: ScrollSpec) -> (offset: int) {
+	switch val in settings.specific {
+	case ScrollDiscrete: offset = clamp(offset_init, 0, val.total_step_count)
+	case ScrollContinuous: offset = clamp(offset_init, 0, settings.range)
+	}
+	return offset
 }
 
-_get_scroll_discrete_start :: proc(offset_init: int, settings: ScrollDiscrete) -> int {
+_get_scroll_start :: proc(offset_init: int, settings: ScrollSpec) -> int {
 	offset := _clamp_scroll_offset(offset_init, settings)
 	track_start := _get_scroll_track_start(settings.track, settings.orientation)
 	result := track_start
-	if settings.total_step_count > 0 {
-		result = int(
-			f32(offset) / f32(settings.total_step_count) * f32(settings.range) + f32(track_start),
-		)
+	switch val in settings.specific {
+	case ScrollDiscrete:
+		if val.total_step_count > 0 {
+			result = int(
+				f32(offset) / f32(val.total_step_count) * f32(settings.range) + f32(track_start),
+			)
+		}
+	case ScrollContinuous: result = offset
 	}
 	return result
 }
 
-_clamp_scroll_offset :: proc(offset_init: int, settings: ScrollDiscrete) -> int {
-	offset := clamp(offset_init, 0, settings.total_step_count)
-	return offset
-}
-
-_clamp_scroll_offset_continuous :: proc(offset_init: int, settings: ScrollContinuous) -> int {
-	offset := clamp(offset_init, 0, settings.range)
-	return offset
-}
-
-_get_scroll_thumb_rect :: proc(offset: int, settings: ScrollDiscrete) -> Rect2i {
+_get_scroll_thumb_rect :: proc(offset: int, settings: ScrollSpec) -> Rect2i {
 	rect := settings.track
-	start := _get_scroll_discrete_start(offset, settings)
+	start := _get_scroll_start(offset, settings)
 	switch settings.orientation {
 	case .Horizontal:
 		rect.topleft.x = start
@@ -972,15 +992,7 @@ _get_scroll_thumb_rect :: proc(offset: int, settings: ScrollDiscrete) -> Rect2i 
 	return rect
 }
 
-_get_scroll_thumb_rect_continous :: proc(offset: int, settings: ScrollContinuous) -> Rect2i {
-	rect := settings.track
-	start := _clamp_scroll_offset_continuous(offset, settings)
-	rect.topleft.y = start
-	rect.dim.y = settings.thumb_size
-	return rect
-}
-
-_get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollDiscrete) -> int {
+_get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollSpec) -> int {
 	cursor_pos: int
 	switch settings.orientation {
 	case .Horizontal: cursor_pos = input.cursor_pos.x
@@ -989,43 +1001,8 @@ _get_scroll_cursor_pos :: proc(input: ^Input, settings: ScrollDiscrete) -> int {
 	return cursor_pos
 }
 
-_get_scroll_offset_and_delta_continuos :: proc(
-	input: ^Input, scroll_ref: Maybe(f32), old_offset_init: int, settings: ScrollContinuous,
-) -> (offset: int, delta: int) {
-
-	old_offset := _clamp_scroll_offset_continuous(old_offset_init, settings)
-	old_thumb_rect := _get_scroll_thumb_rect_continous(old_offset, settings)
-	old_thumb_state := _get_rect_mouse_state(input, old_thumb_rect)
-
-	offset_delta := 0
-	rect_state := _get_rect_mouse_state(input, settings.track)
-
-	cursor_pos := input.cursor_pos.y
-
-	// NOTE(sen) Drag the scroll thumb
-	if scroll_ref != nil {
-		scroll_delta_px := f32(cursor_pos) - scroll_ref.(f32)
-		offset_delta = int(scroll_delta_px)
-
-	// NOTE(sen) Click on track
-	} else if old_thumb_state == .Normal && rect_state == .Pressed {
-		center2 := get_rect_center_f32(old_thumb_rect)
-		center := center2.y
-		scroll_delta_px := f32(cursor_pos) - center
-		offset_delta = int(scroll_delta_px)
-
-	// NOTE(sen) Scroll wheel
-	} else if point_inside_rect(input.cursor_pos, settings.bounding_rect) {
-		offset_delta = input.scroll.y
-	}
-
-	offset = _clamp_scroll_offset_continuous(old_offset + offset_delta, settings)
-	delta = offset - old_offset
-	return offset, delta
-}
-
 _get_scroll_offset_and_delta :: proc(
-	input: ^Input, scroll_ref: Maybe(f32), old_offset_init: int, settings: ScrollDiscrete,
+	input: ^Input, scroll_ref: Maybe(f32), old_offset_init: int, settings: ScrollSpec,
 ) -> (offset: int, delta: int) {
 
 	old_offset := _clamp_scroll_offset(old_offset_init, settings)
@@ -1040,7 +1017,10 @@ _get_scroll_offset_and_delta :: proc(
 	// NOTE(sen) Drag the scroll thumb
 	if scroll_ref != nil {
 		scroll_delta_px := f32(cursor_pos) - scroll_ref.(f32)
-		offset_delta = int(scroll_delta_px / settings.inc)
+		switch val in settings.specific {
+		case ScrollDiscrete: offset_delta = int(scroll_delta_px / val.inc)
+		case ScrollContinuous: offset_delta = int(scroll_delta_px)
+		}
 
 	// NOTE(sen) Click on track
 	} else if old_thumb_state == .Normal && rect_state == .Pressed {
@@ -1051,7 +1031,11 @@ _get_scroll_offset_and_delta :: proc(
 		case .Vertical: center = center2.y
 		}
 		scroll_delta_px := f32(cursor_pos) - center
-		offset_delta = int(scroll_delta_px / settings.inc)
+		switch val in settings.specific {
+		case ScrollDiscrete: offset_delta = int(scroll_delta_px / val.inc)
+		case ScrollContinuous: offset_delta = int(scroll_delta_px)
+		}
+		
 
 	// NOTE(sen) Scroll wheel
 	} else if point_inside_rect(input.cursor_pos, settings.bounding_rect) {
@@ -1076,7 +1060,7 @@ _get_scroll_thumb_col :: proc(ui: ^UI, state: MouseState) -> [4]f32 {
 
 _update_scroll_ref :: proc(
 	input: ^Input, thumb_state: MouseState, ref_init: Maybe(f32),
-	offset_delta: int, settings: ScrollDiscrete,
+	offset_delta: int, settings: ScrollSpec,
 ) -> Maybe(f32) {
 
 	cursor_pos := _get_scroll_cursor_pos(input, settings)
@@ -1087,30 +1071,12 @@ _update_scroll_ref :: proc(
 		if !input.keys[.MouseLeft].ended_down {
 			ref = nil
 		} else {
-			ref = ref.(f32) + f32(offset_delta) * settings.inc
+			switch val in settings.specific {
+			case ScrollDiscrete: ref = ref.(f32) + f32(offset_delta) * val.inc
+			case ScrollContinuous: ref = ref.(f32) + f32(offset_delta)
+			}
 		}
 	}
 
 	return ref
 }
-
-_update_scroll_ref_continuos :: proc(
-	input: ^Input, thumb_state: MouseState, ref_init: Maybe(f32),
-	offset_delta: int, settings: ScrollContinuous,
-) -> Maybe(f32) {
-
-	cursor_pos := input.cursor_pos.y
-	ref := ref_init
-	if thumb_state == .Pressed && ref == nil {
-		ref = f32(cursor_pos)
-	} else if ref != nil {
-		if !input.keys[.MouseLeft].ended_down {
-			ref = nil
-		} else {
-			ref = ref.(f32) + f32(offset_delta)
-		}
-	}
-
-	return ref
-}
-
