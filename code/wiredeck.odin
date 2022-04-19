@@ -65,7 +65,7 @@ main :: proc() {
 	open_file(&state, "build.bat", ui.theme.text_colors)
 	open_file(&state, "code/input.odin", ui.theme.text_colors)
 	open_file(&state, "tests/highlight-c/highlight-c.c", ui.theme.text_colors)
-	state.editing = 2
+	state.editing = 1
 	state.sidebar_width = 150
 
 	state.theme_editor_open = true
@@ -93,16 +93,24 @@ main :: proc() {
 		if state.theme_editor_open {
 			one_color_height := get_button_dim(&ui, "").y
 
+			color_picker_height := 100
+			open_color_piker_count := 0
+			for color in ColorID {
+				if state.color_picker_open[color] {
+					open_color_piker_count += 1
+				}
+			}
+
 			begin_container(
 				&ui, .Right, ui.total_dim.x / 2, {.Left},
 				ContainerScroll{
-					one_color_height * len(ColorID),
+					one_color_height * len(ColorID) + open_color_piker_count * color_picker_height,
 					&state.theme_editor_offset,
 					&state.theme_editor_scroll_ref,
 				},
 			)
 
-			for color_id, index in ColorID {
+			for color_id in ColorID {
 				color_id_string := tprintf("%v", color_id)
 				button_dim := get_button_dim(&ui, color_id_string)
 				begin_container(&ui, .Top, button_dim.y)
@@ -114,15 +122,17 @@ main :: proc() {
 				fill_container(&ui, ui.theme.colors[color_id])
 				end_container(&ui)
 
-				if button_state == .Clicked {
-					state.color_picker_open[color_id] = !state.color_picker_open[color_id]
-				}
+				end_container(&ui)
 
 				if state.color_picker_open[color_id] {
-					//println("draw color picker for", color_id)
+					begin_container(&ui, .Top, color_picker_height)
+					end_container(&ui)
 				}
 
-				end_container(&ui)
+				if button_state == .Clicked {
+					state.color_picker_open[color_id] = !state.color_picker_open[color_id]
+					window.skip_hang_once = true
+				}
 			}
 			end_container(&ui)
 		}

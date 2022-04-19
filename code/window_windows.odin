@@ -122,6 +122,7 @@ init_window :: proc(window: ^Window, title: string, width: int, height: int) {
 		is_fullscreen = false,
 		is_focused = true,
 		is_mouse_captured = false,
+		skip_hang_once = false,
 		dim = [2]int{width, height},
 		platform = {hwnd, hdc, pixel_info, previous_placement, decorations_dim, cursors, false, true, context},
 	}
@@ -282,7 +283,8 @@ wait_for_input :: proc(window: ^Window, input: ^Input) {
 	for {
 		event: win.MSG
 		if win.PeekMessageA(&event, window.platform.hwnd, 0, 0, win.PM_REMOVE) == 0 {
-			if window.platform.input_modified {
+			if window.platform.input_modified || window.skip_hang_once {
+				window.skip_hang_once = false
 				break
 			} else {
 				win.GetMessageA(&event, window.platform.hwnd, 0, 0)
