@@ -24,8 +24,8 @@ UI :: struct {
 }
 
 Container :: struct {
-	rect: Rect2i,
-	offset: int,
+	available: Rect2i,
+	visible: Rect2i,
 }
 
 Theme :: struct {
@@ -214,7 +214,7 @@ ui_begin :: proc(ui: ^UI) {
 	clear(&ui.commands)
 	clear(&ui.container_stack)
 	root_rect := Rect2i{{0, 0}, ui.total_dim}
-	append(&ui.container_stack, Container{root_rect, 0})
+	append(&ui.container_stack, Container{root_rect, root_rect})
 	ui.last_element_rect = Rect2i{}
 	ui.floating = nil
 	clear(&ui.floating_cmd)
@@ -237,14 +237,14 @@ begin_container :: proc(
 	border: Directions = nil,
 	scroll_spec: Maybe(ContainerScroll) = nil,
 ) {
-	size: int
+	size_after_resize: int
 	sep_drag_ref: Maybe(f32)
 	resisable := false
 	switch val in size_init {
 	case int:
-		size = val
+		size_after_resize = val
 	case ContainerResize:
-		size = val.size^
+		size_after_resize = val.size^
 		sep_drag_ref = val.sep_drag_ref^
 		resisable = true
 	}
@@ -255,15 +255,14 @@ begin_container :: proc(
 			sep_is_vertical = false
 		}
 
-		size = max(size, 0)
+		size_after_resize = max(size_after_resize, 0)
 		last_container_rect := last_container(ui)^
-		container_rect_init := Container{_take_rect(&last_container_rect, dir, size + ui.theme.sizes[.Separator]), 0}
-		separator_rect_init := _take_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
-
-		size = container_rect_init.rect.dim.y
+		container_rect_init := _take_rect_from_container(&last_container_rect, dir, size_after_resize)
+		size_after_resize = container_rect_init.dim.y
 		if sep_is_vertical {
-			size = container_rect_init.rect.dim.x
+			size_after_resize = container_rect_init.dim.x
 		}
+		separator_rect_init := _take_rect_from_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
 
 		separator_state := _get_rect_mouse_state(ui.input, separator_rect_init)
 		cur_cursor: f32
@@ -280,14 +279,14 @@ begin_container :: proc(
 		} else {
 			if ui.input.keys[.MouseLeft].ended_down {
 				delta := cur_cursor - sep_drag_ref.(f32)
-				max_size := last_container(ui).rect.dim.y
+				max_size := last_container(ui).visible.dim.y
 				if sep_is_vertical {
-					max_size = last_container(ui).rect.dim.x
+					max_size = last_container(ui).visible.dim.x
 				}
-				new_size := clamp(size + int(delta), 0, max_size - ui.theme.sizes[.Separator])
-				delta = f32(new_size - size)
+				new_size := clamp(size_after_resize + int(delta), 0, max_size)
+				delta = f32(new_size - size_after_resize)
 				sep_drag_ref = sep_drag_ref.(f32) + delta
-				size = new_size
+				size_after_resize = new_size
 			} else {
 				sep_drag_ref = nil
 			}
@@ -301,24 +300,49 @@ begin_container :: proc(
 		}
 	}
 
-	rect: Rect2i
+	full_rect := _take_rect_from_container(last_container(ui), dir, size_after_resize)
+	content_rect := full_rect
+
+	if .Left in border {
+		content_rect.topleft.x += 1
+		content_rect.dim.x -= 1
+	}
+	if .Right in border {
+		content_rect.dim.x -= 1
+	}
+	if .Top in border {
+		content_rect.topleft.y += 1
+		content_rect.dim.y -= 1
+	}
+	if .Bottom in border {
+		content_rect.dim.y -= 1
+	}
+
 	if resisable {
-		container := Container{_take_rect(last_container(ui), dir, size + ui.theme.sizes[.Separator]), 0}
-		sep_rect := _take_rect(&container, dir_opposite(dir), ui.theme.sizes[.Separator])
-		rect = container.rect
-		append(ui.current_cmd_buffer, UICommandRect{sep_rect, ui.theme.colors[.Border]})
-	} else {
-		rect = _take_rect(last_container(ui), dir, size)
+		sep_rect := content_rect
+		#partial switch dir {
+		case .Left: sep_rect.topleft.x += content_rect.dim.x - ui.theme.sizes[.Separator]
+		case .Top: sep_rect.topleft.y += content_rect.dim.y - ui.theme.sizes[.Separator]
+		}
+		switch dir {
+		case .Left, .Right: 
+			sep_rect.dim.x = ui.theme.sizes[.Separator]
+			content_rect.dim.x -= ui.theme.sizes[.Separator]
+		case .Top, .Bottom: 
+			sep_rect.dim.y = ui.theme.sizes[.Separator]
+			content_rect.dim.y -= ui.theme.sizes[.Separator]
+		}
+		_cmd_rect(ui, sep_rect, ui.theme.colors[.Border])
 	}
 
 	scroll_offset := 0
 	if scroll_spec != nil {
-		bounding_rect := rect
+		bounding_rect := full_rect
 		scroll := scroll_spec.(ContainerScroll)
 
-		rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
-		track := _position_scrollbar_track(rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
-		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
+		content_rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
+		track := _position_scrollbar_track(content_rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
+		_cmd_rect(ui, track, ui.theme.colors[.ScrollbarTrack])
 
 		scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
 
@@ -336,7 +360,7 @@ begin_container :: proc(
 		thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_continuous)
 		thumb_state := _get_rect_mouse_state(ui.input, thumb_rect)
 		thumb_color := _get_scroll_thumb_col(ui, thumb_state, scroll_ref)
-		append(ui.current_cmd_buffer, UICommandRect{thumb_rect, thumb_color})
+		_cmd_rect(ui, thumb_rect, thumb_color)
 
 		scroll.ref^ = _update_scroll_ref(
 			ui.input, thumb_state, scroll.ref^, line_offset_delta, scroll_continuous,
@@ -351,11 +375,17 @@ begin_container :: proc(
 		scroll_offset = int(f32(scroll.offset^) * scroll_rate)
 	}
 
-	append(&ui.container_stack, Container{rect, scroll_offset})
-	_cmd_outline(ui, rect, ui.theme.colors[.Border], border)
+	available_rect := content_rect
+	available_rect.topleft.y -= scroll_offset
+	available_rect.dim.y += scroll_offset
+	append(
+		&ui.container_stack, 
+		Container{available_rect, clip_rect_to_rect(content_rect, last_container(ui).visible)},
+	)
+	_cmd_outline(ui, full_rect, ui.theme.colors[.Border], border)
 
 	if resisable {
-		size_init.(ContainerResize).size^ = size
+		size_init.(ContainerResize).size^ = size_after_resize
 		size_init.(ContainerResize).sep_drag_ref^ = sep_drag_ref
 
 		if sep_drag_ref != nil {
@@ -397,9 +427,9 @@ begin_floating :: proc(ui: ^UI, dir: Direction, dim: [2]int, ref: ^Rect2i = nil)
 			rect.topleft.y = ref.topleft.y
 		}
 
-		append(&ui.container_stack, Container{rect, 0})
+		append(&ui.container_stack, Container{rect, rect})
 
-		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundFloating]})
+		_cmd_rect(ui, rect, ui.theme.colors[.BackgroundFloating])
 		_cmd_outline(ui, rect, ui.theme.colors[.Border])
 
 		ui.floating = rect
@@ -438,8 +468,7 @@ button :: proc(
 		dir = .Top
 	}
 
-	bounding_rect := last_container(ui).rect
-	rect := _take_rect(last_container(ui), dir, size)
+	rect := _take_rect_from_container(last_container(ui), dir, size)
 	ui.last_element_rect = rect
 	if process_input {
 		state = _get_rect_mouse_state(ui.input, rect)
@@ -458,7 +487,7 @@ button :: proc(
 	text_topleft.y += padding.y[0]
 
 	if state >= .Hovered || active {
-		append(ui.current_cmd_buffer, UICommandRect{rect, ui.theme.colors[.BackgroundHovered]})
+		_cmd_rect(ui, rect, ui.theme.colors[.BackgroundHovered])
 	}
 
 	if state >= .Hovered {
@@ -473,7 +502,10 @@ button :: proc(
 	}
 	append(
 		ui.current_cmd_buffer,
-		UICommandTextline{strings.clone(label_str, ui.arena_allocator), .Varwidth, text_topleft, rect, col},
+		UICommandTextline{
+			strings.clone(label_str, ui.arena_allocator), .Varwidth, 
+			text_topleft, clip_rect_to_rect(rect, last_container(ui).visible), col,
+		},
 	)
 
 	return state
@@ -502,7 +534,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	// NOTE(khvorov) Scrollbars
 	scrollbar_tracks := _position_scrollbar_tracks(text_rect, ui.theme.sizes[.ScrollbarWidth])
 	for track in scrollbar_tracks {
-		append(ui.current_cmd_buffer, UICommandRect{track, ui.theme.colors[.ScrollbarTrack]})
+		_cmd_rect(ui, track, ui.theme.colors[.ScrollbarTrack])
 	}
 	cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
 
@@ -523,12 +555,12 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	scrollbar_v_thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_discrete.y)
 	scrollbar_v_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_v_thumb_rect)
 	scrollbar_v_thumb_color := _get_scroll_thumb_col(ui, scrollbar_v_thumb_state, cursor_scroll_ref.y)
-	append(ui.current_cmd_buffer, UICommandRect{scrollbar_v_thumb_rect, scrollbar_v_thumb_color})
+	_cmd_rect(ui, scrollbar_v_thumb_rect, scrollbar_v_thumb_color)
 
 	scrollbar_h_thumb_rect := _get_scroll_thumb_rect(col_offset, scroll_discrete.x)
 	scrollbar_h_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_h_thumb_rect)
 	scrollbar_h_thumb_color := _get_scroll_thumb_col(ui, scrollbar_h_thumb_state, cursor_scroll_ref.x)
-	append(ui.current_cmd_buffer, UICommandRect{scrollbar_h_thumb_rect, scrollbar_h_thumb_color})
+	_cmd_rect(ui, scrollbar_h_thumb_rect, scrollbar_h_thumb_color)
 
 	cursor_scroll_ref.y = _update_scroll_ref(
 		ui.input, scrollbar_v_thumb_state, cursor_scroll_ref.y, line_offset_delta, scroll_discrete.y,
@@ -668,8 +700,8 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 }
 
 fill_container :: proc(ui: ^UI, color: [4]f32) {
-	rect := last_container(ui).rect
-	append(ui.current_cmd_buffer, UICommandRect{rect, color})
+	rect := last_container(ui).visible
+	_cmd_rect(ui, rect, color)
 }
 
 get_button_pad :: proc(ui: ^UI) -> [2][2]int {
@@ -724,41 +756,12 @@ get_rect_center_f32 :: proc(rect: Rect2i) -> [2]f32 {
 	return result
 }
 
-_take_rect :: proc(from_container: ^Container, dir: Direction, size_init: int) -> Rect2i {
-	rect := _peek_rect(from_container, dir, size_init)
-
-	from := &from_container.rect
-
-	size: int
-	switch dir {
-	case .Top, .Bottom:
-		size = rect.dim.y
-	case .Left, .Right:
-		size = rect.dim.x
-	}
-
-	#partial switch dir {
-	case .Top:
-		from.topleft.y += size
-	case .Left:
-		from.topleft.x += size
-	}
-
-	switch dir {
-	case .Top, .Bottom:
-		from.dim.y -= size
-	case .Left, .Right:
-		from.dim.x -= size
-	}
-
+_take_rect_from_container :: proc(from_container: ^Container, dir: Direction, size_init: int) -> Rect2i {
+	rect := _take_rect_from_rect(&from_container.available, dir, size_init)
 	return rect
 }
 
-_peek_rect :: proc(from_container: ^Container, dir: Direction, size_init: int) -> (rect: Rect2i) {
-
-	from := from_container.rect
-	from.topleft.y -= from_container.offset
-	from.dim.y += from_container.offset
+_take_rect_from_rect :: proc(from: ^Rect2i, dir: Direction, size_init: int) -> (rect: Rect2i) {
 
 	size: int
 	switch dir {
@@ -786,13 +789,27 @@ _peek_rect :: proc(from_container: ^Container, dir: Direction, size_init: int) -
 		rect.dim = [2]int{size, from.dim.y}
 	}
 
+	#partial switch dir {
+	case .Top:
+		from.topleft.y += size
+	case .Left:
+		from.topleft.x += size
+	}
+
+	switch dir {
+	case .Top, .Bottom:
+		from.dim.y -= size
+	case .Left, .Right:
+		from.dim.x -= size
+	}
+
 	return rect
 }
 
 _take_entire_rect :: proc(from: ^Container) -> Rect2i {
-	result := from.rect
-	from.rect.topleft += from.rect.dim
-	from.rect.dim = 0
+	result := from.available
+	from.available.topleft += from.available.dim
+	from.available.dim = 0
 	return result
 }
 
@@ -831,11 +848,15 @@ _get_inner_outline :: proc(rect: Rect2i) -> (result: [Direction]Rect2i) {
 	return result
 }
 
+_cmd_rect :: proc(ui: ^UI, rect: Rect2i, color: [4]f32) {
+	append(ui.current_cmd_buffer, UICommandRect{rect, color})
+}
+
 _cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32, dirs: Directions = {.Top, .Bottom, .Left, .Right}) {
 	rects := _get_inner_outline(rect)
 	for dir in Direction {
 		if dir in dirs {
-			append(ui.current_cmd_buffer, UICommandRect{rects[dir], color})
+			_cmd_rect(ui, rects[dir], color)
 		}
 	}
 }
@@ -979,7 +1000,7 @@ _get_scroll_start :: proc(offset_init: int, settings: ScrollSpec) -> int {
 				f32(offset) / f32(val.total_step_count) * f32(settings.range) + f32(track_start),
 			)
 		}
-	case ScrollContinuous: result = offset
+	case ScrollContinuous: result = offset + track_start
 	}
 	return result
 }

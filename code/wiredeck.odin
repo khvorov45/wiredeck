@@ -69,6 +69,7 @@ main :: proc() {
 	state.sidebar_width = 150
 
 	state.theme_editor_open = true
+	state.color_picker_open[.Background] = true
 
 	for window.is_running {
 
