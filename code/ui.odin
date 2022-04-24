@@ -345,8 +345,10 @@ begin_container :: proc(
 		bounding_rect := full_rect
 		scroll := scroll_spec.(ContainerScroll)
 
+		scroll_clip_rect := content_rect
 		content_rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
 		track := _position_scrollbar_track(content_rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
+		track = clip_rect_to_rect(track, scroll_clip_rect)
 		_cmd_rect(ui, track, ui.theme.colors[.ScrollbarTrack])
 
 		scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
@@ -538,7 +540,8 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 
 	// NOTE(khvorov) Scrollbars
 	scrollbar_tracks := _position_scrollbar_tracks(text_rect, ui.theme.sizes[.ScrollbarWidth])
-	for track in scrollbar_tracks {
+	for track in &scrollbar_tracks {
+		track = clip_rect_to_rect(track, text_area_rect)
 		_cmd_rect(ui, track, ui.theme.colors[.ScrollbarTrack])
 	}
 	cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
@@ -941,7 +944,7 @@ _get_scroll_continuous :: proc(
 		range := height - track_len
 		thumb_size := track_len - range
 		if thumb_size < thumb_size_min {
-			thumb_size = thumb_size_min
+			thumb_size = min(thumb_size_min, track_len / 2)
 			range = track_len - thumb_size
 		}
 		result = ScrollSpec{
@@ -962,7 +965,7 @@ _get_scroll_discrete :: proc(
 	track_len := _get_scroll_track_len(track, orientation)
 	thumb_size := track_len - range
 	if thumb_size < thumb_size_min {
-		thumb_size = thumb_size_min
+		thumb_size = min(thumb_size_min, track_len / 2)
 		range = track_len - thumb_size
 		if total_step_count > 0 {
 			inc = f32(range) / f32(total_step_count)
