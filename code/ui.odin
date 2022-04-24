@@ -533,7 +533,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	text_rect_max_y := text_rect.topleft.y + text_rect.dim.y
 
 	line_numbers_rect := text_rect
-	line_numbers_rect.dim.x = num_rect_dim.x + 2 * ui.theme.sizes[.TextAreaGutter]
+	line_numbers_rect.dim.x = min(num_rect_dim.x + 2 * ui.theme.sizes[.TextAreaGutter], text_rect.dim.x)
 	text_rect.dim.x -= line_numbers_rect.dim.x
 	text_rect.topleft.x += line_numbers_rect.dim.x
 	_cmd_outline(ui, line_numbers_rect, ui.theme.colors[.Border], {.Right})
@@ -853,13 +853,13 @@ _get_rect_mouse_state :: proc(input: ^Input, rect: Rect2i) -> MouseState {
 
 _get_inner_outline :: proc(rect: Rect2i) -> (result: [Direction]Rect2i) {
 	top := rect
-	top.dim.y = 1
+	top.dim.y = min(1, rect.dim.y)
 
 	bottom := top
 	bottom.topleft.y += rect.dim.y - 1
 
 	left := rect
-	left.dim.x = 1
+	left.dim.x = min(1, rect.dim.x)
 
 	right := left
 	right.topleft.x += rect.dim.x - 1
