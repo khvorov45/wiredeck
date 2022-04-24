@@ -102,6 +102,11 @@ main :: proc() {
 				}
 			}
 
+			/*begin_container(&ui, .Top, 100)
+			end_container(&ui)
+			begin_container(&ui, .Bottom, 100)
+			end_container(&ui)*/
+
 			begin_container(
 				&ui, .Right, ui.total_dim.x / 2, {.Left},
 				ContainerScroll{
@@ -127,6 +132,9 @@ main :: proc() {
 
 				if state.color_picker_open[color_id] {
 					begin_container(&ui, .Top, color_picker_height)
+
+					color_picker(&ui)
+
 					end_container(&ui)
 				}
 
@@ -184,6 +192,8 @@ main :: proc() {
 				draw_rect_px(&renderer, cmd.rect, cmd.color)
 			case UICommandTextline:
 				draw_text_px(&renderer, ui.fonts[cmd.font_id], cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.colors)
+			case UICommandRectGradient2d:
+				draw_rect_gradient2d(&renderer, cmd.grad)
 			}
 		}
 

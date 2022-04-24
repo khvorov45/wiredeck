@@ -96,11 +96,16 @@ MouseState :: enum {
 UICommand :: union {
 	UICommandRect,
 	UICommandTextline,
+	UICommandRectGradient2d,
 }
 
 UICommandRect :: struct {
 	rect: Rect2i,
 	color: [4]f32,
+}
+
+UICommandRectGradient2d :: struct {
+	grad: Gradient2d,
 }
 
 UICommandTextline :: struct {
@@ -697,6 +702,22 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	if cursor_scroll_ref.y != nil || cursor_scroll_ref.x != nil {
 		ui.should_capture_mouse = true
 	}
+}
+
+color_picker :: proc(ui: ^UI) {
+
+	full_rect := _take_entire_rect(last_container(ui))
+
+	color4point := Color4point{
+		topleft = [4]f32{0, 0, 0, 1},
+		topright = [4]f32{1, 0, 0, 1},
+		bottomleft = [4]f32{0, 1, 0, 1},
+		bottomright = [4]f32{0, 0, 1, 1},
+	}
+
+	clipped_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
+	clipped_color4point := clip_color4point(color4point, full_rect, clipped_rect)
+	append(ui.current_cmd_buffer, UICommandRectGradient2d{{clipped_rect, clipped_color4point}})
 }
 
 fill_container :: proc(ui: ^UI, color: [4]f32) {

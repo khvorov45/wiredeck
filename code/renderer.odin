@@ -13,6 +13,18 @@ LineSegment2i :: struct {
 	end: [2]int,
 }
 
+Gradient2d :: struct {
+	rect: Rect2i,
+	colors: Color4point,
+}
+
+Color4point :: struct {
+	topleft: [4]f32,
+	topright: [4]f32,
+	bottomleft: [4]f32,
+	bottomright: [4]f32,
+}
+
 init_renderer :: proc(renderer: ^Renderer, max_width, max_height: int) {
 	renderer^ = Renderer {
 		pixel_storage = make([]u32, max_width * max_height),
@@ -48,6 +60,29 @@ draw_rect_px :: proc(renderer: ^Renderer, rect_init: Rect2i, color: [4]f32) {
 			for col in rect.topleft.x ..< bottomright.x {
 				px_index := row * renderer.pixels_dim.x + col
 				old_col := renderer.pixels[px_index]
+				new_col32 := color_blend(old_col, color)
+				renderer.pixels[px_index] = new_col32
+			}
+		}
+	}
+}
+
+draw_rect_gradient2d :: proc(renderer: ^Renderer, gradient2d: Gradient2d) {
+	rect := clip_rect_to_rect(gradient2d.rect, Rect2i{{0, 0}, renderer.pixels_dim})
+	if is_valid_draw_rect(rect, renderer.pixels_dim) {
+
+		rect_bottomright := rect.topleft + rect.dim
+		range := to_2f32(gradient2d.rect.dim)
+		new_col4point := clip_color4point(gradient2d.colors, gradient2d.rect, rect)
+
+		for row in rect.topleft.y..<rect_bottomright.y {
+			for col in rect.topleft.x..<rect_bottomright.x {
+				px_index := row * renderer.pixels_dim.x + col
+				old_col := renderer.pixels[px_index]
+
+				coeffs := ([2]f32{f32(col), f32(row)} - to_2f32(rect.topleft)) / range
+
+				color := bilinear(new_col4point, coeffs)
 				new_col32 := color_blend(old_col, color)
 				renderer.pixels[px_index] = new_col32
 			}
@@ -308,6 +343,28 @@ clip_line_to_rect :: proc(line: LineSegment2i, bounds: Rect2i) -> LineSegment2i 
 	return result
 }
 
+clip_color4point :: proc(color4point: Color4point, full: Rect2i, clipped: Rect2i) -> Color4point {
+	clipped_bottomright := clipped.topleft + clipped.dim
+	clipped_topright := [2]int{clipped_bottomright.x, clipped.topleft.y}
+	clipped_bottomleft := [2]int{clipped.topleft.x, clipped_bottomright.y}
+
+	range := to_2f32(full.dim)
+	start := to_2f32(full.topleft)
+
+	topleft_lerp_coeffs := (to_2f32(clipped.topleft) - start) / range
+	bottomright_lerp_coeffs := (to_2f32(clipped_bottomright) - start) / range
+	topright_lerp_coeffs := (to_2f32(clipped_topright) - start) / range
+	bottomleft_lerp_coeffs := (to_2f32(clipped_bottomleft) - start) / range
+
+	result := Color4point{
+		topleft = bilinear(color4point, topleft_lerp_coeffs),
+		bottomright = bilinear(color4point, bottomright_lerp_coeffs),
+		topright = bilinear(color4point, topright_lerp_coeffs),
+		bottomleft = bilinear(color4point, bottomleft_lerp_coeffs),
+	}
+	return result
+}
+
 is_valid_draw_rect :: proc(rect: Rect2i, px_dim: [2]int) -> bool {
 	rect_bottomright := rect.topleft + rect.dim
 	nonzero := rect.dim.x > 0 && rect.dim.y > 0
@@ -338,4 +395,26 @@ color_blend :: proc(old: u32, new: [4]f32) -> u32 {
 	new4 := (1 - new.a) * old4 + new.a * new
 	new32 := color_to_u32argb(new4)
 	return new32
+}
+
+lerp1 :: proc(from: f32, by: f32, to: f32) -> f32 {
+	result := (1 - by) * from + by * to
+	return result
+}
+
+lerp4 :: proc(from: [4]f32, by: f32, to: [4]f32) -> [4]f32 {
+	result := (1 - by) * from + by * to
+	return result
+}
+
+bilinear :: proc(colors: Color4point, coeffs: [2]f32) -> [4]f32 {
+	x1 := lerp4(colors.topleft, coeffs.x, colors.topright)
+	x2 := lerp4(colors.bottomleft, coeffs.x, colors.bottomright)
+	result := lerp4(x1, coeffs.y, x2)
+	return result
+}
+
+to_2f32 :: proc(val: [2]int) -> [2]f32 {
+	result := [2]f32{f32(val.x), f32(val.y)}
+	return result
 }
