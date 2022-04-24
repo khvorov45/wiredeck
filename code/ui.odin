@@ -284,9 +284,9 @@ begin_container :: proc(
 		} else {
 			if ui.input.keys[.MouseLeft].ended_down {
 				delta := cur_cursor - sep_drag_ref.(f32)
-				max_size := last_container(ui).visible.dim.y
+				max_size := last_container(ui).available.dim.y
 				if sep_is_vertical {
-					max_size = last_container(ui).visible.dim.x
+					max_size = last_container(ui).available.dim.x
 				}
 				new_size := clamp(size_after_resize + int(delta), 0, max_size)
 				delta = f32(new_size - size_after_resize)
