@@ -366,7 +366,7 @@ begin_container :: proc(
 
 		thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_continuous)
 		thumb_state := _get_rect_mouse_state(ui.input, thumb_rect)
-		thumb_color := _get_scroll_thumb_col(ui, thumb_state, scroll_ref)
+		thumb_color := _get_scroll_thumb_col(ui, thumb_state, scroll_ref, scroll_continuous.range)
 		_cmd_rect(ui, thumb_rect, thumb_color)
 
 		scroll.ref^ = _update_scroll_ref(
@@ -562,12 +562,12 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 
 	scrollbar_v_thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_discrete.y)
 	scrollbar_v_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_v_thumb_rect)
-	scrollbar_v_thumb_color := _get_scroll_thumb_col(ui, scrollbar_v_thumb_state, cursor_scroll_ref.y)
+	scrollbar_v_thumb_color := _get_scroll_thumb_col(ui, scrollbar_v_thumb_state, cursor_scroll_ref.y, scroll_discrete.y.range)
 	_cmd_rect(ui, scrollbar_v_thumb_rect, scrollbar_v_thumb_color)
 
 	scrollbar_h_thumb_rect := _get_scroll_thumb_rect(col_offset, scroll_discrete.x)
 	scrollbar_h_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_h_thumb_rect)
-	scrollbar_h_thumb_color := _get_scroll_thumb_col(ui, scrollbar_h_thumb_state, cursor_scroll_ref.x)
+	scrollbar_h_thumb_color := _get_scroll_thumb_col(ui, scrollbar_h_thumb_state, cursor_scroll_ref.x, scroll_discrete.x.range)
 	_cmd_rect(ui, scrollbar_h_thumb_rect, scrollbar_h_thumb_color)
 
 	cursor_scroll_ref.y = _update_scroll_ref(
@@ -1104,9 +1104,9 @@ _get_scroll_offset_and_delta :: proc(
 	return offset, delta
 }
 
-_get_scroll_thumb_col :: proc(ui: ^UI, state: MouseState, ref: Maybe(f32)) -> [4]f32 {
+_get_scroll_thumb_col :: proc(ui: ^UI, state: MouseState, ref: Maybe(f32), range: int) -> [4]f32 {
 	color := ui.theme.colors[.ScrollbarThumb]
-	if state > .Normal || ref != nil {
+	if range > 0 && (state > .Normal || ref != nil) {
 		color = ui.theme.colors[.ScrollbarThumbHovered]
 	}
 	return color
