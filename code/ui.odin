@@ -306,6 +306,9 @@ begin_container :: proc(
 	}
 
 	full_rect := _take_rect_from_container(last_container(ui), dir, size_after_resize)
+	if scroll_spec != nil {
+		full_rect.dim.y = max(full_rect.dim.y, scroll_spec.(ContainerScroll).height)
+	}
 	content_rect := full_rect
 
 	if .Left in border {
@@ -330,10 +333,10 @@ begin_container :: proc(
 		case .Top: sep_rect.topleft.y += content_rect.dim.y - ui.theme.sizes[.Separator]
 		}
 		switch dir {
-		case .Left, .Right: 
+		case .Left, .Right:
 			sep_rect.dim.x = ui.theme.sizes[.Separator]
 			content_rect.dim.x -= ui.theme.sizes[.Separator]
-		case .Top, .Bottom: 
+		case .Top, .Bottom:
 			sep_rect.dim.y = ui.theme.sizes[.Separator]
 			content_rect.dim.y -= ui.theme.sizes[.Separator]
 		}
@@ -342,21 +345,23 @@ begin_container :: proc(
 
 	scroll_offset := 0
 	if scroll_spec != nil {
-		bounding_rect := full_rect
 		scroll := scroll_spec.(ContainerScroll)
 
-		scroll_clip_rect := content_rect
+		bounding_rect := clip_rect_to_rect(content_rect, last_container(ui).visible)
 		content_rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
-		track := _position_scrollbar_track(content_rect, ui.theme.sizes[.ScrollbarWidth], .Vertical)
-		track = clip_rect_to_rect(track, scroll_clip_rect)
+		track := _position_scrollbar_track(
+			clip_rect_to_rect(content_rect, last_container(ui).visible),
+			ui.theme.sizes[.ScrollbarWidth],
+			.Vertical,
+		)
 		_cmd_rect(ui, track, ui.theme.colors[.ScrollbarTrack])
 
 		scroll_ref := _clamp_scroll_ref(track, scroll.ref^, .Vertical)
 
 		scroll_continuous := _get_scroll_continuous(
-			track, 
+			track,
 			scroll.height,
-			ui.theme.sizes[.ScrollbarThumbLengthMin], 
+			ui.theme.sizes[.ScrollbarThumbLengthMin],
 			ui.theme.sizes[.ScrollContPxPerWheelInc],
 			bounding_rect,
 		)
@@ -384,9 +389,8 @@ begin_container :: proc(
 
 	available_rect := content_rect
 	available_rect.topleft.y -= scroll_offset
-	available_rect.dim.y += scroll_offset
 	append(
-		&ui.container_stack, 
+		&ui.container_stack,
 		Container{available_rect, clip_rect_to_rect(content_rect, last_container(ui).visible)},
 	)
 	_cmd_outline(ui, full_rect, ui.theme.colors[.Border], border)
@@ -510,7 +514,7 @@ button :: proc(
 	append(
 		ui.current_cmd_buffer,
 		UICommandTextline{
-			strings.clone(label_str, ui.arena_allocator), .Varwidth, 
+			strings.clone(label_str, ui.arena_allocator), .Varwidth,
 			text_topleft, clip_rect_to_rect(rect, last_container(ui).visible), col,
 		},
 	)
@@ -711,11 +715,13 @@ color_picker :: proc(ui: ^UI) {
 
 	full_rect := _take_entire_rect(last_container(ui))
 
+	hue := 84
+
 	color4point := Color4point{
-		topleft = [4]f32{0, 0, 0, 1},
-		topright = [4]f32{1, 0, 0, 1},
-		bottomleft = [4]f32{0, 1, 0, 1},
-		bottomright = [4]f32{0, 0, 1, 1},
+		topleft = hsv_to_rgb(hue, 0, 100),
+		topright = hsv_to_rgb(hue, 100, 100),
+		bottomleft = hsv_to_rgb(hue, 0, 0),
+		bottomright = hsv_to_rgb(hue, 100, 0),
 	}
 
 	clipped_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
@@ -777,6 +783,47 @@ dir_opposite :: proc(dir: Direction) -> Direction {
 
 get_rect_center_f32 :: proc(rect: Rect2i) -> [2]f32 {
 	result := [2]f32{f32(rect.topleft.x), f32(rect.topleft.y)} + 0.5 * [2]f32{f32(rect.dim.x), f32(rect.dim.y)}
+	return result
+}
+
+hsv_to_rgb :: proc(hue, sat, brt: int) -> [4]f32 {
+	assert(hue >= 0 && hue < 360 && sat >= 0 && sat <= 100 && brt >= 0 && brt <= 100)
+
+	rgb_max := f32(brt) / 100
+	range := rgb_max * f32(sat) / 100
+	hue_loc := f32(hue) / 60
+
+	result: [4]f32
+	switch {
+	case hue_loc < 1:
+		grad := hue_loc - 0
+		other := grad * range
+		result = [4]f32{range, other, 0, 1}
+	case hue_loc < 2:
+		grad := 1 - (hue_loc - 1)
+		other := grad * range
+		result = [4]f32{other, range, 0, 1}
+	case hue_loc < 3:
+		grad := hue_loc - 2
+		other := grad * range
+		result = [4]f32{0, range, other, 1}
+	case hue_loc < 4:
+		grad := 1 - (hue_loc - 3)
+		other := grad * range
+		result = [4]f32{0, other, range, 1}
+	case hue_loc < 5:
+		grad := hue_loc - 4
+		other := grad * range
+		result = [4]f32{other, 0, range, 1}
+	case hue_loc < 6:
+		grad := 1 - (hue_loc - 5)
+		other := grad * range
+		result = [4]f32{range, 0, other, 1}
+	}
+
+	rgb_min := rgb_max - range
+	result.rgb += rgb_min
+
 	return result
 }
 
@@ -1086,7 +1133,6 @@ _get_scroll_offset_and_delta :: proc(
 		case ScrollDiscrete: offset_delta = int(scroll_delta_px / val.inc)
 		case ScrollContinuous: offset_delta = int(scroll_delta_px)
 		}
-		
 
 	// NOTE(sen) Scroll wheel
 	} else if point_inside_rect(input.cursor_pos, settings.bounding_rect) {

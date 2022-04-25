@@ -94,7 +94,7 @@ main :: proc() {
 		if state.theme_editor_open {
 			one_color_height := get_button_dim(&ui, "").y
 
-			color_picker_height := 100
+			color_picker_height := 200
 			open_color_piker_count := 0
 			for color in ColorID {
 				if state.color_picker_open[color] {
@@ -107,10 +107,13 @@ main :: proc() {
 			begin_container(&ui, .Bottom, 100)
 			end_container(&ui)*/
 
+			theme_editor_width := ui.total_dim.x / 2
+			theme_editor_height := one_color_height * len(ColorID) + open_color_piker_count * color_picker_height
+
 			begin_container(
-				&ui, .Right, ui.total_dim.x / 2, {.Left},
+				&ui, .Right, theme_editor_width, {.Left},
 				ContainerScroll{
-					one_color_height * len(ColorID) + open_color_piker_count * color_picker_height,
+					theme_editor_height,
 					&state.theme_editor_offset,
 					&state.theme_editor_scroll_ref,
 				},
@@ -133,7 +136,9 @@ main :: proc() {
 				if state.color_picker_open[color_id] {
 					begin_container(&ui, .Top, color_picker_height)
 
+					begin_container(&ui, .Left, min(color_picker_height, theme_editor_width / 2))
 					color_picker(&ui)
+					end_container(&ui)
 
 					end_container(&ui)
 				}
