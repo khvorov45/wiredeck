@@ -711,22 +711,103 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	}
 }
 
-color_picker :: proc(ui: ^UI) {
+color_picker :: proc(ui: ^UI, sel_rgba: ^[4]f32, sel_hue_init: ^f32, drag_ref: ^Maybe(f32)) {
 
 	full_rect := _take_entire_rect(last_container(ui))
+	picker2d_rect := _take_rect_from_rect(&full_rect, .Left, min(full_rect.dim.y, full_rect.dim.x / 2))
+	_take_rect_from_rect(&full_rect, .Left, 10)
+	hue_rect := _take_rect_from_rect(&full_rect, .Left, 30)
 
-	hue := 84
+	subhue_rect_height := hue_rect.dim.y / 6
+	picker2d_rect.dim.y = subhue_rect_height * 6
+	hue_rect.dim.y = picker2d_rect.dim.y
 
-	color4point := Color4point{
-		topleft = hsv_to_rgb(hue, 0, 100),
-		topright = hsv_to_rgb(hue, 100, 100),
-		bottomleft = hsv_to_rgb(hue, 0, 0),
-		bottomright = hsv_to_rgb(hue, 100, 0),
+	color4point_hue_all: [6]Color4point
+	subhue_rect_all: [6]Rect2i
+	hue_top: f32 = 0
+	hue_bottom: f32 = 59
+	hue_rect_copy := hue_rect
+	for color4point_hue, index in &color4point_hue_all {
+		color4point_hue = Color4point{
+			topleft = hsv_to_rgb(hue_top, 100, 100),
+			topright = hsv_to_rgb(hue_top, 100, 100),
+			bottomleft = hsv_to_rgb(hue_bottom, 100, 100),
+			bottomright = hsv_to_rgb(hue_bottom, 100, 100),
+		}
+		subhue_rect_all[index] = _take_rect_from_rect(&hue_rect_copy, .Top, subhue_rect_height)
+		hue_top += 60
+		hue_bottom += 60
 	}
 
-	clipped_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
-	clipped_color4point := clip_color4point(color4point, full_rect, clipped_rect)
-	append(ui.current_cmd_buffer, UICommandRectGradient2d{{clipped_rect, clipped_color4point}})
+	cmd_grad2d :: proc(ui: ^UI, grad: Color4point, og: Rect2i) {
+		clipped_rect := clip_rect_to_rect(og, last_container(ui).visible)
+		clipped_grad := clip_color4point(grad, og, clipped_rect)
+		append(ui.current_cmd_buffer, UICommandRectGradient2d{{clipped_rect, clipped_grad}})
+	}
+
+	for color4point_hue, index in color4point_hue_all {
+		cmd_grad2d(ui, color4point_hue, subhue_rect_all[index])
+	}
+
+	sel_hue, sel_sat, sel_brt := rgb_to_hsv(sel_rgba.rgb, sel_hue_init^)
+
+	get_sel_hue_outline :: proc(sel_hue: f32, hue_rect: Rect2i) -> Rect2i {
+		sel_hue_outline_height := 5
+		sel_hue_outline_start_y := 
+			int(f32(sel_hue) / 359 * f32(hue_rect.dim.y - 1)) + hue_rect.topleft.y - sel_hue_outline_height / 2
+		sel_hue_outline := Rect2i{
+			[2]int{hue_rect.topleft.x, sel_hue_outline_start_y},
+			[2]int{hue_rect.dim.x, sel_hue_outline_height},
+		}
+		return sel_hue_outline
+	}
+
+	sel_hue_outline := get_sel_hue_outline(sel_hue, hue_rect)
+	if _get_rect_mouse_state(ui.input, hue_rect) == .Pressed && _get_rect_mouse_state(ui.input, sel_hue_outline) == .Normal {
+		sel_hue = f32(ui.input.cursor_pos.y - hue_rect.topleft.y) / f32(hue_rect.dim.y - 1) * 359
+		sel_hue_outline = get_sel_hue_outline(sel_hue, hue_rect)
+	}
+
+	if drag_ref^ == nil {
+		if _get_rect_mouse_state(ui.input, sel_hue_outline) == .Pressed {
+			drag_ref^ = f32(ui.input.cursor_pos.y)
+		}
+	} else {
+		if ui.input.keys[.MouseLeft].ended_down {
+			delta := f32(ui.input.cursor_pos.y) - drag_ref.(f32)
+			max_hue_pos := f32(hue_rect.dim.y - 1)
+			hue_pos_current := f32(sel_hue) / 359 * max_hue_pos
+			hue_pos_new := clamp(hue_pos_current + delta, 0, max_hue_pos)
+			delta = hue_pos_new - hue_pos_current
+			hue_loc := hue_pos_new / max_hue_pos
+			sel_hue = hue_loc * 359
+			drag_ref^ = drag_ref.(f32) + delta
+			sel_hue_outline = get_sel_hue_outline(sel_hue, hue_rect)
+		} else {
+			drag_ref^ = nil
+		}
+	}
+
+	_cmd_outline(ui, sel_hue_outline, [4]f32{0.25, 0.25, 0.25, 1})
+	sel_hue_outline.topleft -= 1
+	sel_hue_outline.dim += 2
+	_cmd_outline(ui, sel_hue_outline, [4]f32{0.75, 0.75, 0.75, 1})
+
+	color4point_picker2d := Color4point{
+		topleft = hsv_to_rgb(sel_hue, 0, 100),
+		topright = hsv_to_rgb(sel_hue, 100, 100),
+		bottomleft = hsv_to_rgb(sel_hue, 0, 0),
+		bottomright = hsv_to_rgb(sel_hue, 100, 0),
+	}
+
+	cmd_grad2d(ui, color4point_picker2d, picker2d_rect)
+
+	sel_rgba^ = hsv_to_rgb(sel_hue, sel_sat, sel_brt)
+	sel_hue_init^ = sel_hue
+
+	if drag_ref^ != nil {
+		ui.should_capture_mouse = true
+	}
 }
 
 fill_container :: proc(ui: ^UI, color: [4]f32) {
@@ -786,7 +867,63 @@ get_rect_center_f32 :: proc(rect: Rect2i) -> [2]f32 {
 	return result
 }
 
-hsv_to_rgb :: proc(hue, sat, brt: int) -> [4]f32 {
+rgb_to_hsv :: proc(rgb: [3]f32, hue_default: f32) -> (hue: f32, sat: f32, brt: f32) {
+	range: f32
+	rgb_max: f32
+	hue_loc: f32
+
+	switch {
+	case rgb.r == rgb.b && rgb.b == rgb.g:
+		rgb_max = rgb.r
+		range = 0
+		hue_loc = f32(hue_default) / 60
+	case rgb.r >= rgb.g && rgb.g >= rgb.b:
+		rgb_max = rgb.r
+		rgb_min := rgb.b
+		range = rgb_max - rgb_min
+		grad := (rgb.g - rgb_min) / range
+		hue_loc = grad + 0
+	case rgb.g >= rgb.r && rgb.r >= rgb.b:
+		rgb_max = rgb.g
+		rgb_min := rgb.b
+		range = rgb_max - rgb_min
+		grad := (rgb.r - rgb.b) / range
+		hue_loc = (1 - grad) + 1
+	case rgb.g >= rgb.b && rgb.b >= rgb.r:
+		rgb_max = rgb.g
+		rgb_min := rgb.r
+		range = rgb_max - rgb_min
+		grad := (rgb.b - rgb_min) / range
+		hue_loc = grad + 2
+	case rgb.b >= rgb.g && rgb.g >= rgb.r:
+		rgb_max = rgb.b
+		rgb_min := rgb.r
+		range = rgb_max - rgb_min
+		grad := (rgb.g - rgb_min) / range
+		hue_loc = (1 - grad) + 3
+	case rgb.b >= rgb.r && rgb.r >= rgb.g:
+		rgb_max = rgb.b
+		rgb_min := rgb.g
+		range = rgb_max - rgb_min
+		grad := (rgb.r - rgb_min) / range
+		hue_loc = grad + 4
+	case rgb.r >= rgb.b && rgb.b >= rgb.g:
+		rgb_max = rgb.r
+		rgb_min := rgb.g
+		range = rgb_max - rgb_min
+		grad := (rgb.b - rgb_min) / range
+		hue_loc = (1 - grad) + 5
+	case: panic("undexpected color")
+	}
+
+	brt = rgb_max * 100
+	sat = range / rgb_max * 100
+	hue = hue_loc * 60
+
+	return hue, sat, brt
+}
+
+hsv_to_rgb :: proc(hue, sat, brt: f32) -> [4]f32 {
 	assert(hue >= 0 && hue < 360 && sat >= 0 && sat <= 100 && brt >= 0 && brt <= 100)
 
 	rgb_max := f32(brt) / 100

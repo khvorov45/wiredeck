@@ -14,7 +14,7 @@ State :: struct {
 	sidebar_width: int,
 	sidebar_drag_ref: Maybe(f32),
 	theme_editor_open: bool,
-	color_picker_open: [ColorID]bool,
+	color_pickers: [ColorID]struct{open: bool, hue: f32, drag_ref: Maybe(f32)},
 	theme_editor_scroll_ref: Maybe(f32),
 	theme_editor_offset: int,
 }
@@ -68,8 +68,13 @@ main :: proc() {
 	state.editing = 1
 	state.sidebar_width = 150
 
+	for color_id in ColorID {
+		state.color_pickers[color_id].hue, _, _ = 
+			rgb_to_hsv(ui.theme.colors[color_id].rgb, state.color_pickers[color_id].hue)
+	}
+
 	state.theme_editor_open = true
-	state.color_picker_open[.Background] = true
+	state.color_pickers[.Background].open = true
 
 	for window.is_running {
 
@@ -97,7 +102,7 @@ main :: proc() {
 			color_picker_height := 200
 			open_color_piker_count := 0
 			for color in ColorID {
-				if state.color_picker_open[color] {
+				if state.color_pickers[color].open {
 					open_color_piker_count += 1
 				}
 			}
@@ -133,18 +138,17 @@ main :: proc() {
 
 				end_container(&ui)
 
-				if state.color_picker_open[color_id] {
+				if state.color_pickers[color_id].open {
 					begin_container(&ui, .Top, color_picker_height)
 
-					begin_container(&ui, .Left, min(color_picker_height, theme_editor_width / 2))
-					color_picker(&ui)
-					end_container(&ui)
+					picker := &state.color_pickers[color_id]
+					color_picker(&ui, &ui.theme.colors[color_id], &picker.hue, &picker.drag_ref)
 
 					end_container(&ui)
 				}
 
 				if button_state == .Clicked {
-					state.color_picker_open[color_id] = !state.color_picker_open[color_id]
+					state.color_pickers[color_id].open = !state.color_pickers[color_id].open
 					window.skip_hang_once = true
 				}
 			}

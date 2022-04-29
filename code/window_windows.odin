@@ -217,17 +217,15 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 			}
 		}
 
-	case win.WM_LBUTTONDOWN, win.WM_MBUTTONDOWN,  win.WM_RBUTTONDOWN, win.WM_LBUTTONUP, win.WM_MBUTTONUP, win.WM_RBUTTONUP:
-		if window.is_focused {
-			window.platform.input_modified = true
-			switch event.message {
-				case win.WM_LBUTTONDOWN: record_key(input, .MouseLeft, true)
-				case win.WM_MBUTTONDOWN: record_key(input, .MouseMiddle, true)
-				case win.WM_RBUTTONDOWN: record_key(input, .MouseRight, true)
-				case win.WM_LBUTTONUP: record_key(input, .MouseLeft, false)
-				case win.WM_MBUTTONUP: record_key(input, .MouseMiddle, false)
-				case win.WM_RBUTTONUP: record_key(input, .MouseRight, false)
-			}
+	case win.WM_LBUTTONDOWN, win.WM_MBUTTONDOWN, win.WM_RBUTTONDOWN, win.WM_LBUTTONUP, win.WM_MBUTTONUP, win.WM_RBUTTONUP:
+		window.platform.input_modified = true
+		switch event.message {
+			case win.WM_LBUTTONDOWN: record_key(input, .MouseLeft, true)
+			case win.WM_MBUTTONDOWN: record_key(input, .MouseMiddle, true)
+			case win.WM_RBUTTONDOWN: record_key(input, .MouseRight, true)
+			case win.WM_LBUTTONUP: record_key(input, .MouseLeft, false)
+			case win.WM_MBUTTONUP: record_key(input, .MouseMiddle, false)
+			case win.WM_RBUTTONUP: record_key(input, .MouseRight, false)
 		}
 
 	case win.WM_MOUSELEAVE:
@@ -255,12 +253,10 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 			window.platform.mouse_inside_window = true
 			_track_mouse_leave(window.platform.hwnd)
 		}
-		if window.is_focused || window.is_mouse_captured {
-			window.platform.input_modified = true
-			input.cursor_pos = [2]int{
-				int(transmute(i16)win.LOWORD(win.DWORD(event.lParam))), 
-				int(transmute(i16)win.HIWORD(win.DWORD(event.lParam))),
-			}
+		window.platform.input_modified = true
+		input.cursor_pos = [2]int{
+			int(transmute(i16)win.LOWORD(win.DWORD(event.lParam))),
+			int(transmute(i16)win.HIWORD(win.DWORD(event.lParam))),
 		}
 
 	case win.WM_PAINT:
