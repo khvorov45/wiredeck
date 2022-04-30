@@ -426,3 +426,16 @@ to_2f32 :: proc(val: [2]int) -> [2]f32 {
 	result := [2]f32{f32(val.x), f32(val.y)}
 	return result
 }
+
+to_2int :: proc(val: [2]f32) -> [2]int {
+	result := [2]int{int(val.x), int(val.y)}
+	return result
+}
+
+safe_ratio0 :: proc(val, by: f32) -> f32 {
+	result: f32 = 0
+	if by != 0 {
+		result = val / by
+	}
+	return result
+}

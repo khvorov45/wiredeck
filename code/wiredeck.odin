@@ -12,9 +12,9 @@ State :: struct {
 	opened_files: [dynamic]OpenedFile,
 	editing: Maybe(int),
 	sidebar_width: int,
-	sidebar_drag_ref: Maybe([2]f32),
+	sidebar_drag: Maybe(DragRef),
 	theme_editor_open: bool,
-	color_pickers: [ColorID]struct{open: bool, hue: f32, hue_drag_ref: Maybe([2]f32)},
+	color_pickers: [ColorID]struct{open: bool, hue, sat: f32, hue_drag, grad2d_drag: Maybe(DragRef)},
 	theme_editor_scroll_ref: Maybe(f32),
 	theme_editor_offset: int,
 }
@@ -69,8 +69,8 @@ main :: proc() {
 	state.sidebar_width = 150
 
 	for color_id in ColorID {
-		state.color_pickers[color_id].hue, _, _ = 
-			rgb_to_hsv(ui.theme.colors[color_id].rgb, state.color_pickers[color_id].hue)
+		state.color_pickers[color_id].hue, _, _ =
+			rgb_to_hsv(ui.theme.colors[color_id].rgb, state.color_pickers[color_id].hue, state.color_pickers[color_id].sat)
 	}
 
 	state.theme_editor_open = true
@@ -142,7 +142,10 @@ main :: proc() {
 					begin_container(&ui, .Top, color_picker_height)
 
 					picker := &state.color_pickers[color_id]
-					color_picker(&ui, &ui.theme.colors[color_id], &picker.hue, &picker.hue_drag_ref)
+					color_picker(
+						&ui, &ui.theme.colors[color_id], &picker.hue, &picker.sat,
+						&picker.hue_drag, &picker.grad2d_drag,
+					)
 
 					end_container(&ui)
 				}
@@ -157,7 +160,7 @@ main :: proc() {
 
 		// NOTE(khvorov) Sidebar
 		{
-			begin_container(&ui, .Left, ContainerResize{&state.sidebar_width, &state.sidebar_drag_ref})
+			begin_container(&ui, .Left, ContainerResize{&state.sidebar_width, &state.sidebar_drag})
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {

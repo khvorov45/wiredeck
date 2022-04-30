@@ -154,13 +154,18 @@ ScrollSpec :: struct {
 
 ContainerResize :: struct {
 	size: ^int,
-	sep_drag_ref_delta: ^Maybe([2]f32),
+	sep_drag: ^Maybe(DragRef),
 }
 
 ContainerScroll :: struct {
 	height: int,
 	offset: ^int,
 	ref: ^Maybe(f32),
+}
+
+DragRef :: struct {
+	ref: [2]f32,
+	cursor_delta: [2]f32,
 }
 
 init_ui :: proc(
@@ -243,14 +248,14 @@ begin_container :: proc(
 	scroll_spec: Maybe(ContainerScroll) = nil,
 ) {
 	size_after_resize: int
-	sep_drag_ref_delta: Maybe([2]f32)
+	sep_drag: Maybe(DragRef)
 	resisable := false
 	switch val in size_init {
 	case int:
 		size_after_resize = val
 	case ContainerResize:
 		size_after_resize = val.size^
-		sep_drag_ref_delta = val.sep_drag_ref_delta^
+		sep_drag = val.sep_drag^
 		resisable = true
 	}
 
@@ -269,14 +274,14 @@ begin_container :: proc(
 		}
 		separator_rect_init := _take_rect_from_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
 
-		drag_delta := _update_drag_ref(ui, &sep_drag_ref_delta, separator_rect_init, last_container(ui).available)
+		drag_delta := _update_drag_ref(ui, &sep_drag, separator_rect_init, last_container(ui).available)
 		if sep_is_vertical {
 			size_after_resize += int(drag_delta.x)
 		} else {
 			size_after_resize += int(drag_delta.y)
 		}
 
-		if sep_drag_ref_delta != nil || _get_rect_mouse_state(ui.input, separator_rect_init) > .Normal {
+		if sep_drag != nil || _get_rect_mouse_state(ui.input, separator_rect_init) > .Normal {
 			ui.req_cursor = .SizeNS
 			if sep_is_vertical {
 				ui.req_cursor = .SizeWE
@@ -376,9 +381,9 @@ begin_container :: proc(
 
 	if resisable {
 		size_init.(ContainerResize).size^ = size_after_resize
-		size_init.(ContainerResize).sep_drag_ref_delta^ = sep_drag_ref_delta
+		size_init.(ContainerResize).sep_drag^ = sep_drag
 
-		if sep_drag_ref_delta != nil {
+		if sep_drag != nil {
 			ui.should_capture_mouse = true
 		}
 	}
@@ -690,12 +695,16 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	}
 }
 
-color_picker :: proc(ui: ^UI, sel_rgba: ^[4]f32, sel_hue_init: ^f32, hue_drag_ref_delta: ^Maybe([2]f32)) {
+color_picker :: proc(
+	ui: ^UI, sel_rgba: ^[4]f32, sel_hue_init: ^f32, sel_sat_init: ^f32,
+	hue_drag, grad2d_drag: ^Maybe(DragRef),
+) {
 
 	full_rect := _take_entire_rect(last_container(ui))
-	picker2d_rect := _take_rect_from_rect(&full_rect, .Left, min(full_rect.dim.y, full_rect.dim.x / 2))
-	_take_rect_from_rect(&full_rect, .Left, 10)
-	hue_rect := _take_rect_from_rect(&full_rect, .Left, 30)
+	full_rect_copy := full_rect
+	picker2d_rect := _take_rect_from_rect(&full_rect_copy, .Left, min(full_rect_copy.dim.y, full_rect_copy.dim.x / 2))
+	_take_rect_from_rect(&full_rect_copy, .Left, 10)
+	hue_rect := _take_rect_from_rect(&full_rect_copy, .Left, 30)
 
 	subhue_rect_height := hue_rect.dim.y / 6
 	picker2d_rect.dim.y = subhue_rect_height * 6
@@ -728,7 +737,7 @@ color_picker :: proc(ui: ^UI, sel_rgba: ^[4]f32, sel_hue_init: ^f32, hue_drag_re
 		cmd_grad2d(ui, color4point_hue, subhue_rect_all[index])
 	}
 
-	sel_hue, sel_sat, sel_brt := rgb_to_hsv(sel_rgba.rgb, sel_hue_init^)
+	sel_hue, sel_sat, sel_brt := rgb_to_hsv(sel_rgba.rgb, sel_hue_init^, sel_sat_init^)
 
 	get_sel_hue_outline :: proc(sel_hue: f32, hue_rect: Rect2i) -> Rect2i {
 		sel_hue_outline_height := 5
@@ -747,14 +756,19 @@ color_picker :: proc(ui: ^UI, sel_rgba: ^[4]f32, sel_hue_init: ^f32, hue_drag_re
 		sel_hue_outline = get_sel_hue_outline(sel_hue, hue_rect)
 	}
 
-	hue_drag_delta := _update_drag_ref(ui, hue_drag_ref_delta, sel_hue_outline, hue_rect)
+	hue_drag_delta := _update_drag_ref(ui, hue_drag, sel_hue_outline, hue_rect)
 	sel_hue_outline.topleft.y += int(hue_drag_delta.y)
 	sel_hue = clamp(sel_hue + hue_drag_delta.y / f32(hue_rect.dim.y - 1) * 359, 0, 359)
 
-	_cmd_outline(ui, sel_hue_outline, [4]f32{0.25, 0.25, 0.25, 1})
-	sel_hue_outline.topleft -= 1
-	sel_hue_outline.dim += 2
-	_cmd_outline(ui, sel_hue_outline, [4]f32{0.75, 0.75, 0.75, 1})
+	cmd_double_outline :: proc(ui: ^UI, outline, clip: Rect2i) {
+		outline := outline
+		_cmd_outline(ui = ui, rect = outline, color = [4]f32{0.25, 0.25, 0.25, 1}, clip_rect = clip)
+		outline.topleft -= 1
+		outline.dim += 2
+		_cmd_outline(ui = ui, rect = outline, color = [4]f32{0.75, 0.75, 0.75, 1}, clip_rect = clip)
+	}
+
+	cmd_double_outline(ui, sel_hue_outline, full_rect)
 
 	color4point_picker2d := Color4point{
 		topleft = hsv_to_rgb(sel_hue, 0, 100),
@@ -765,10 +779,33 @@ color_picker :: proc(ui: ^UI, sel_rgba: ^[4]f32, sel_hue_init: ^f32, hue_drag_re
 
 	cmd_grad2d(ui, color4point_picker2d, picker2d_rect)
 
+	get_sel_2d_outline :: proc(sel_sat, sel_brt: f32, picker2d_rect: Rect2i) -> Rect2i {
+		outline_dim := [2]int{5, 5}
+		outline_center := [2]f32{sel_sat, 100 - sel_brt} / 100 * to_2f32(picker2d_rect.dim - 1) + to_2f32(picker2d_rect.topleft)
+		outline_topleft := outline_center - to_2f32(outline_dim) / 2
+		outline := Rect2i{to_2int(outline_topleft + 0.5), outline_dim}
+		return outline
+	}
+
+	sel_2d_outline := get_sel_2d_outline(sel_sat, sel_brt, picker2d_rect)
+	if _get_rect_mouse_state(ui.input, picker2d_rect) == .Pressed && _get_rect_mouse_state(ui.input, sel_2d_outline) == .Normal {
+		sel_sat = f32(ui.input.cursor_pos.x - picker2d_rect.topleft.x) / f32(picker2d_rect.dim.x - 1) * 100
+		sel_brt = 100 - f32(ui.input.cursor_pos.y - picker2d_rect.topleft.y) / f32(picker2d_rect.dim.y - 1) * 100
+		sel_2d_outline = get_sel_2d_outline(sel_sat, sel_brt, picker2d_rect)
+	}
+
+	sel_2d_drag_delta := _update_drag_ref(ui, grad2d_drag, sel_2d_outline, picker2d_rect, true)
+	sel_sat = clamp(sel_sat + sel_2d_drag_delta.x / f32(picker2d_rect.dim.x - 1) * 100, 0, 100)
+	sel_brt = clamp(sel_brt - sel_2d_drag_delta.y / f32(picker2d_rect.dim.y - 1) * 100, 0, 100)
+	sel_2d_outline = get_sel_2d_outline(sel_sat, sel_brt, picker2d_rect)
+
+	cmd_double_outline(ui, sel_2d_outline, picker2d_rect)
+
 	sel_rgba^ = hsv_to_rgb(sel_hue, sel_sat, sel_brt)
 	sel_hue_init^ = sel_hue
+	sel_sat_init^ = sel_sat
 
-	if hue_drag_ref_delta^ != nil {
+	if hue_drag^ != nil || grad2d_drag^ != nil {
 		ui.should_capture_mouse = true
 	}
 }
@@ -830,7 +867,7 @@ get_rect_center_f32 :: proc(rect: Rect2i) -> [2]f32 {
 	return result
 }
 
-rgb_to_hsv :: proc(rgb: [3]f32, hue_default: f32) -> (hue: f32, sat: f32, brt: f32) {
+rgb_to_hsv :: proc(rgb: [3]f32, hue_default, sat_default: f32) -> (hue: f32, sat: f32, brt: f32) {
 	range: f32
 	rgb_max: f32
 	hue_loc: f32
@@ -880,7 +917,10 @@ rgb_to_hsv :: proc(rgb: [3]f32, hue_default: f32) -> (hue: f32, sat: f32, brt: f
 	}
 
 	brt = rgb_max * 100
-	sat = range / rgb_max * 100
+	sat = sat_default
+	if rgb_max != 0 {
+		sat = range / rgb_max * 100
+	}
 	hue = hue_loc * 60
 
 	return hue, sat, brt
@@ -1023,11 +1063,19 @@ _cmd_rect :: proc(ui: ^UI, rect: Rect2i, color: [4]f32) {
 	append(ui.current_cmd_buffer, UICommandRect{rect, color})
 }
 
-_cmd_outline :: proc(ui: ^UI, rect: Rect2i, color: [4]f32, dirs: Directions = {.Top, .Bottom, .Left, .Right}) {
+_cmd_outline :: proc(
+	ui: ^UI, rect: Rect2i, color: [4]f32,
+	dirs: Directions = {.Top, .Bottom, .Left, .Right},
+	clip_rect: Maybe(Rect2i) = nil,
+) {
 	rects := _get_inner_outline(rect)
 	for dir in Direction {
 		if dir in dirs {
-			_cmd_rect(ui, rects[dir], color)
+			outline_rect := rects[dir]
+			if clip_rect != nil {
+				outline_rect = clip_rect_to_rect(outline_rect, clip_rect.(Rect2i))
+			}
+			_cmd_rect(ui, outline_rect, color)
 		}
 	}
 }
@@ -1282,21 +1330,30 @@ _update_scroll_ref :: proc(
 }
 
 _update_drag_ref :: proc(
-	ui: ^UI, drag_ref_delta: ^Maybe([2]f32), drag_rect: Rect2i, bounding_rect: Rect2i,
+	ui: ^UI, drag: ^Maybe(DragRef), drag_rect: Rect2i, bounding_rect: Rect2i,
+	clip_to_bounding: bool = false,
 ) -> (delta: [2]f32) {
 
-	if drag_ref_delta^ == nil {
-		if _get_rect_mouse_state(ui.input, drag_rect) == .Pressed {
-			drag_ref_delta^ = to_2f32(ui.input.cursor_pos) - get_rect_center_f32(drag_rect)
+	drag_rect_clipped := drag_rect
+	if clip_to_bounding {
+		drag_rect_clipped = clip_rect_to_rect(drag_rect, bounding_rect)
+	}
+
+	if drag^ == nil {
+		if _get_rect_mouse_state(ui.input, drag_rect_clipped) == .Pressed {
+			ref := get_rect_center_f32(drag_rect)
+			delta := to_2f32(ui.input.cursor_pos) - ref
+			drag^ = DragRef{ref, delta}
 		}
 	} else {
 		if ui.input.keys[.MouseLeft].ended_down {
-			old_ref_pos := get_rect_center_f32(drag_rect)
-			test_new_ref_pos := to_2f32(ui.input.cursor_pos) - drag_ref_delta.([2]f32)
+			old_ref_pos := drag.(DragRef).ref
+			test_new_ref_pos := to_2f32(ui.input.cursor_pos) - drag.(DragRef).cursor_delta
 			actual_new_ref_pos := clip_point_to_rect(test_new_ref_pos, bounding_rect)
 			delta = actual_new_ref_pos - old_ref_pos
+			drag^ = DragRef{actual_new_ref_pos, drag.(DragRef).cursor_delta}
 		} else {
-			drag_ref_delta^ = nil
+			drag^ = nil
 		}
 	}
 
