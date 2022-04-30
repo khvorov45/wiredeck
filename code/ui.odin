@@ -1028,11 +1028,14 @@ _get_rect_mouse_state :: proc(input: ^Input, rect: Rect2i) -> MouseState {
 	state := MouseState.Normal
 	if point_inside_rect(input.cursor_pos, rect) {
 		state = .Hovered
-		mouse_left_down := input.keys[.MouseLeft].ended_down
+		mouse_left_down := input.mouse_buttons[.MouseLeft].key.ended_down
 		if was_pressed(input, .MouseLeft) && mouse_left_down {
 			state = .Pressed
 		} else if was_unpressed(input, .MouseLeft) && !mouse_left_down {
-			state = .Clicked
+			last_pressed_inside := point_inside_rect(input.mouse_buttons[.MouseLeft].last_down_cursor_pos, rect)
+			if last_pressed_inside {
+				state = .Clicked
+			}
 		}
 	}
 	return state
@@ -1316,7 +1319,7 @@ _update_scroll_ref :: proc(
 	if thumb_state == .Pressed && ref == nil {
 		ref = f32(cursor_pos)
 	} else if ref != nil {
-		if !input.keys[.MouseLeft].ended_down {
+		if !input.mouse_buttons[.MouseLeft].key.ended_down {
 			ref = nil
 		} else {
 			switch val in settings.specific {
@@ -1346,7 +1349,7 @@ _update_drag_ref :: proc(
 			drag^ = DragRef{ref, delta}
 		}
 	} else {
-		if ui.input.keys[.MouseLeft].ended_down {
+		if ui.input.mouse_buttons[.MouseLeft].key.ended_down {
 			old_ref_pos := drag.(DragRef).ref
 			test_new_ref_pos := to_2f32(ui.input.cursor_pos) - drag.(DragRef).cursor_delta
 			actual_new_ref_pos := clip_point_to_rect(test_new_ref_pos, bounding_rect)

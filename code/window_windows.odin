@@ -220,12 +220,12 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 	case win.WM_LBUTTONDOWN, win.WM_MBUTTONDOWN, win.WM_RBUTTONDOWN, win.WM_LBUTTONUP, win.WM_MBUTTONUP, win.WM_RBUTTONUP:
 		window.platform.input_modified = true
 		switch event.message {
-			case win.WM_LBUTTONDOWN: record_key(input, .MouseLeft, true)
-			case win.WM_MBUTTONDOWN: record_key(input, .MouseMiddle, true)
-			case win.WM_RBUTTONDOWN: record_key(input, .MouseRight, true)
-			case win.WM_LBUTTONUP: record_key(input, .MouseLeft, false)
-			case win.WM_MBUTTONUP: record_key(input, .MouseMiddle, false)
-			case win.WM_RBUTTONUP: record_key(input, .MouseRight, false)
+			case win.WM_LBUTTONDOWN: record_mouse_button(input, .MouseLeft, true)
+			case win.WM_MBUTTONDOWN: record_mouse_button(input, .MouseMiddle, true)
+			case win.WM_RBUTTONDOWN: record_mouse_button(input, .MouseRight, true)
+			case win.WM_LBUTTONUP: record_mouse_button(input, .MouseLeft, false)
+			case win.WM_MBUTTONUP: record_mouse_button(input, .MouseMiddle, false)
+			case win.WM_RBUTTONUP: record_mouse_button(input, .MouseRight, false)
 		}
 
 	case win.WM_MOUSELEAVE:
