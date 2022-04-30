@@ -6,7 +6,7 @@ import "core:mem"
 
 UI :: struct {
 	input:                ^Input,
-	fonts:                 [FontID]^Font,
+	fonts:                [FontID]^Font,
 	monospace_px_width:   int,
 	theme:                Theme,
 	total_dim:            [2]int,
