@@ -12,9 +12,9 @@ State :: struct {
 	opened_files: [dynamic]OpenedFile,
 	editing: Maybe(int),
 	sidebar_width: int,
-	sidebar_drag_ref: Maybe(f32),
+	sidebar_drag_ref: Maybe([2]f32),
 	theme_editor_open: bool,
-	color_pickers: [ColorID]struct{open: bool, hue: f32, drag_ref: Maybe(f32)},
+	color_pickers: [ColorID]struct{open: bool, hue: f32, hue_drag_ref: Maybe([2]f32)},
 	theme_editor_scroll_ref: Maybe(f32),
 	theme_editor_offset: int,
 }
@@ -142,7 +142,7 @@ main :: proc() {
 					begin_container(&ui, .Top, color_picker_height)
 
 					picker := &state.color_pickers[color_id]
-					color_picker(&ui, &ui.theme.colors[color_id], &picker.hue, &picker.drag_ref)
+					color_picker(&ui, &ui.theme.colors[color_id], &picker.hue, &picker.hue_drag_ref)
 
 					end_container(&ui)
 				}

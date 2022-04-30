@@ -262,6 +262,14 @@ clip_rect_to_rect :: proc(rect: Rect2i, bounds: Rect2i) -> Rect2i {
 	return result
 }
 
+clip_point_to_rect :: proc(point: [2]f32, rect: Rect2i) -> (clipped: [2]f32) {
+	rect_topleft := to_2f32(rect.topleft)
+	rect_bottomright := to_2f32(rect.topleft + rect.dim)
+	clipped.x = clamp(point.x, rect_topleft.x, rect_bottomright.x - 1)
+	clipped.y = clamp(point.y, rect_topleft.y, rect_bottomright.y - 1)
+	return clipped
+}
+
 // Liang–Barsky algorithm
 // https://en.wikipedia.org/wiki/Liang%E2%80%93Barsky_algorithm
 clip_line_to_rect :: proc(line: LineSegment2i, bounds: Rect2i) -> LineSegment2i {
