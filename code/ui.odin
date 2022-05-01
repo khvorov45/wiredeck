@@ -2,7 +2,6 @@ package wiredeck
 
 import "core:strings"
 import "core:fmt"
-import "core:mem"
 
 UI :: struct {
 	input:                ^Input,
@@ -17,8 +16,8 @@ UI :: struct {
 	floating:             Maybe(Rect2i),
 	floating_cmd:         [dynamic]UICommand,
 	current_cmd_buffer:   ^[dynamic]UICommand,
-	arena:                mem.Arena,
-	arena_allocator:      mem.Allocator,
+	arena:                Arena,
+	arena_allocator:      Allocator,
 	should_capture_mouse: bool,
 	req_cursor:           CursorKind,
 }
@@ -218,8 +217,8 @@ init_ui :: proc(
 		current_cmd_buffer = nil,
 	}
 
-	mem.init_arena(&ui.arena, make([]u8, 4 * MEGABYTE))
-	ui.arena_allocator = mem.arena_allocator(&ui.arena)
+	init_arena(&ui.arena, make([]u8, 4 * MEGABYTE))
+	ui.arena_allocator = arena_allocator(&ui.arena)
 }
 
 ui_begin :: proc(ui: ^UI) {

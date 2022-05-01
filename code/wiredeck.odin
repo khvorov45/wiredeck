@@ -26,17 +26,17 @@ ColorPickerState :: struct {
 }
 
 OpenedFile :: struct {
-	path:                 string,
-	fullpath:             string,
-	fullpath_col:         [][4]f32, // NOTE(khvorov) Same length as fullpath bytes
-	content:              string,
-	colors:               [][4]f32, // NOTE(khvorov) Same length as content bytes
-	line_count:           int,
+	path: string,
+	fullpath: string,
+	fullpath_col: [][4]f32, // NOTE(khvorov) Same length as fullpath bytes
+	content: string,
+	colors: [][4]f32, // NOTE(khvorov) Same length as content bytes
+	line_count: int,
 	max_col_width_glyphs: int,
-	line_offset_lines:    int,
-	line_offset_bytes:    int,
-	col_offset:           int,
-	cursor_scroll_ref:    [2]Maybe(f32),
+	line_offset_lines: int,
+	line_offset_bytes: int,
+	col_offset: int,
+	cursor_scroll_ref: [2]Maybe(f32),
 }
 
 main :: proc() {
