@@ -230,22 +230,18 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 
 	case win.WM_MOUSELEAVE:
 		window.platform.mouse_inside_window = false
-		if window.is_focused || window.is_mouse_captured {
-			window.platform.input_modified = true
-			if !window.is_mouse_captured {
-				input.cursor_pos = -1
-			}
+		window.platform.input_modified = true
+		if !window.is_mouse_captured {
+			input.cursor_pos = -1
 		}
 
 	case win.WM_MOUSEWHEEL:
-		if window.is_focused || window.is_mouse_captured {
-			window.platform.input_modified = true
-			delta := -int(transmute(i16)(win.HIWORD(win.DWORD(event.wParam)))) / 120
-			if input.keys[.Shift].ended_down {
-				input.scroll.x = delta
-			} else {
-				input.scroll.y = delta
-			}
+		window.platform.input_modified = true
+		delta := -int(transmute(i16)(win.HIWORD(win.DWORD(event.wParam)))) / 120
+		if input.keys[.Shift].ended_down {
+			input.scroll.x = delta
+		} else {
+			input.scroll.y = delta
 		}
 
 	case win.WM_MOUSEMOVE:
