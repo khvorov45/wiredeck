@@ -1,6 +1,5 @@
 package wiredeck
 
-import "core:os"
 import "core:fmt"
 
 import ft "freetype"
@@ -35,7 +34,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 	ft_lib: ft.Library
 	assert(ft.Init_FreeType(&ft_lib) == ft.Err_Ok)
 
-	file_data, read_ok := os.read_entire_file_from_filename(filepath)
+	file_data, read_ok := read_entire_file(filepath)
 	assert(read_ok, fmt.tprintf("failed to read font at %s", filepath))
 
 	ft_face: ft.Face
