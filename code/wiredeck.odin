@@ -2,7 +2,6 @@ package wiredeck
 
 import "core:fmt"
 import "core:strings"
-import "core:os"
 
 println :: fmt.println
 printf :: fmt.printf
@@ -220,7 +219,7 @@ main :: proc() {
 }
 
 open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f32) {
-	if file_contents, ok := os.read_entire_file(filepath); ok {
+	if file_contents, ok := read_entire_file(filepath); ok {
 
 		// NOTE(khvorov) Count lines and column widths
 		str := string(file_contents)

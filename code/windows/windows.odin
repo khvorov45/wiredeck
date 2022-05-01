@@ -61,6 +61,23 @@ foreign win {
 	GetWindowPlacement :: proc(hWnd: HWND, lpwndpl: ^WINDOWPLACEMENT) -> BOOL ---
 	GetMonitorInfoA :: proc(hMonitor: HMONITOR, lpmi: LPMONITORINFO) -> BOOL ---
 	MonitorFromWindow :: proc(hwind: HWND, dwFlags: DWORD) -> HMONITOR ---
+	ReadFile :: proc(
+		hFile: HANDLE,
+		lpBuffer: LPVOID,
+		nNumberOfBytesToRead: DWORD,
+		lpNumberOfBytesRead: LPDWORD,
+		lpOverlapped: LPOVERLAPPED,
+	) -> BOOL ---
+	CreateFileA :: proc(
+		lpFileName: LPCSTR,
+		dwDesiredAccess: DWORD,
+		dwShareMode: DWORD,
+		lpSecurityAttributes: ^LPSECURITY_ATTRIBUTES,
+		dwCreationDisposition: DWORD,
+		dwFlagsAndAttributes: DWORD,
+		hTemplateFil: HANDLE,
+	) -> HANDLE ---
+	GetFileSize :: proc(hFile: HANDLE, lpFileSizeHigh: LPDWORD) -> DWORD ---
 }
 
 LOWORD :: #force_inline proc "contextless" (x: DWORD) -> WORD {
@@ -88,8 +105,11 @@ HMONITOR :: HANDLE
 BOOL :: i32
 LONG :: i32
 UINT :: u32
+ULONG :: u32
+ULONG_PTR :: ^ULONG
 WORD :: u16
 DWORD :: u32
+LPDWORD :: ^DWORD
 SIZE_T :: uint
 LPCSTR :: cstring
 LONG_PTR :: int
@@ -155,6 +175,22 @@ MSG :: struct {
 }
 MONITORINFO :: struct {cbSize: DWORD, rcMonitor, rcWork: RECT, dwFlags: DWORD}
 LPMONITORINFO :: ^MONITORINFO
+OVERLAPPED :: struct {
+	Internal: ULONG_PTR,
+	InternalHigh: ULONG_PTR,
+	DUMMYUNIONNAME: struct #raw_union {
+		DUMMYSTRUCTNAME: struct {Offset, OffsetHigh: DWORD},
+		pointer: PVOID,
+	},
+	hEvent: HANDLE,
+}
+LPOVERLAPPED :: ^OVERLAPPED
+SECURITY_ATTRIBUTES :: struct {
+	nLength: DWORD,
+	lpSecurityDescriptor: LPVOID,
+	bInheritHandle: BOOL,
+}
+LPSECURITY_ATTRIBUTES :: ^SECURITY_ATTRIBUTES
 
 TME_LEAVE :: 0x00000002
 MEM_COMMIT :: 0x00001000
@@ -193,6 +229,10 @@ SWP_NOSENDCHANGING :: 0x0400
 MONITOR_DEFAULTTONULL :: 0x00000000
 MONITOR_DEFAULTTOPRIMARY :: 0x00000001
 MONITOR_DEFAULTTONEAREST :: 0x00000002
+GENERIC_READ :: 0x80000000
+FILE_SHARE_READ :: 0x00000001
+OPEN_EXISTING :: 3
+FILE_ATTRIBUTE_NORMAL :: 0x00000080
 
 _CW_USEDEFAULT := 0x80000000
 CW_USEDEFAULT := i32(_CW_USEDEFAULT)
