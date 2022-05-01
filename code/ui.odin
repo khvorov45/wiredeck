@@ -54,6 +54,7 @@ TextColorID :: enum {
 	Normal,
 	Comment,
 	Punctuation,
+	FilepathSeparator,
 }
 
 SizeID :: enum {
@@ -187,6 +188,7 @@ init_ui :: proc(
 	theme.text_colors[.Normal] = [4]f32{0.9, 0.9, 0.9, 1}
 	theme.text_colors[.Comment] = [4]f32{0.5, 0.5, 0.5, 1}
 	theme.text_colors[.Punctuation] = [4]f32{0.8, 0.8, 0, 1}
+	theme.text_colors[.FilepathSeparator] = [4]f32{0.8, 0.0, 0.8, 1}
 
 	theme.sizes[.ButtonPadding] = 5
 	theme.sizes[.Separator] = 5

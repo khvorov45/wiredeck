@@ -6,11 +6,12 @@ import fp "core:path/filepath"
 highlight :: proc(
 	filepath: string,
 	file_content: string,
+	colors: ^[][4]f32,
 	text_cols: [TextColorID][4]f32,
-) -> [][4]f32 {
+) {
+	assert(len(colors) == len(file_content))
 
-	colors := make([][4]f32, len(file_content))
-	for col in &colors {
+	for col in colors {
 		col = text_cols[.Normal]
 	}
 
@@ -24,12 +25,10 @@ highlight :: proc(
 
 	switch file_ext {
 	case "c":
-		highlight_c(filepath, file_content, &colors, text_cols)
+		highlight_c(filepath, file_content, colors, text_cols)
 	case "bat":
-		highlight_bat(filepath, file_content, &colors, text_cols)
+		highlight_bat(filepath, file_content, colors, text_cols)
 	}
-
-	return colors
 }
 
 highlight_c :: proc(
@@ -115,34 +114,30 @@ highlight_bat :: proc(
 	}
 }
 
-highlight_filepath :: proc(filepath: string, text_cols: [TextColorID][4]f32) -> [][4]f32 {
-	result := make([][4]f32, len(filepath))
+highlight_filepath :: proc(filepath: string, colors: ^[][4]f32, text_cols: [TextColorID][4]f32) {
+	assert(len(filepath) == len(colors))
 
 	last_sep_index := 0
 	for index in 0..<len(filepath) {
 		ch := filepath[index]
 
-		when ODIN_OS == .Windows {
-			if ch == ':' {
-				result[index] = text_cols[.Punctuation]
-			}
-		}
-
-		if ch == fp.SEPARATOR {
+		switch ch {
+		case fp.SEPARATOR:
 			last_sep_index = index
-			result[index] = text_cols[.Punctuation]
-		} else {
-			result[index] = text_cols[.Normal]
+			colors[index] = text_cols[.FilepathSeparator]
+		case ':':
+			when ODIN_OS == .Windows {
+				colors[index] = text_cols[.FilepathSeparator]
+			}
+		case: colors[index] = text_cols[.Normal]
 		}
 	}
 
 	if len(filepath) > 0 {
 		for index in 0..last_sep_index {
-			result[index] *= 0.8
+			colors[index].rgb *= 0.8
 		}
 	}
-
-	return result
 }
 
 index_non_whitespace :: proc(str: string) -> int {

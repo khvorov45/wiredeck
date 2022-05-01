@@ -14,9 +14,16 @@ State :: struct {
 	sidebar_width: int,
 	sidebar_drag: Maybe(DragRef),
 	theme_editor_open: bool,
-	color_pickers: [ColorID]struct{open: bool, hue, sat: f32, hue_drag, grad2d_drag: Maybe(DragRef)},
+	color_pickers: [ColorID]ColorPickerState,
+	text_color_pickers: [TextColorID]ColorPickerState,
 	theme_editor_scroll_ref: Maybe(f32),
 	theme_editor_offset: int,
+}
+
+ColorPickerState :: struct {
+	open: bool,
+	hue, sat: f32,
+	hue_drag, grad2d_drag: Maybe(DragRef),
 }
 
 OpenedFile :: struct {
@@ -66,7 +73,7 @@ main :: proc() {
 	open_file(&state, "code/input.odin", ui.theme.text_colors)
 	open_file(&state, "tests/highlight-c/highlight-c.c", ui.theme.text_colors)
 	state.editing = 1
-	state.sidebar_width = 150
+	state.sidebar_width = 350
 
 	for color_id in ColorID {
 		state.color_pickers[color_id].hue, _, _ =
@@ -74,7 +81,7 @@ main :: proc() {
 	}
 
 	state.theme_editor_open = true
-	state.color_pickers[.Background].open = true
+	state.text_color_pickers[.FilepathSeparator].open = true
 
 	for window.is_running {
 
@@ -106,6 +113,11 @@ main :: proc() {
 					open_color_piker_count += 1
 				}
 			}
+			for color in TextColorID {
+				if state.text_color_pickers[color].open {
+					open_color_piker_count += 1
+				}
+			}
 
 			/*begin_container(&ui, .Top, 100)
 			end_container(&ui)
@@ -125,36 +137,30 @@ main :: proc() {
 			)
 
 			for color_id in ColorID {
-				color_id_string := tprintf("%v", color_id)
-				button_dim := get_button_dim(&ui, color_id_string)
-				begin_container(&ui, .Top, button_dim.y)
-				ui.current_layout = .Horizontal
+				collapsible_color_picker(
+					&ui, &window,
+					tprintf("%v", color_id), &state.color_pickers[color_id],
+					&ui.theme.colors[color_id], color_picker_height,
+				)
+			}
 
-				button_state := button(ui = &ui, label_str = color_id_string, text_align = .Begin)
+			for color_id in TextColorID {
+				old_col := ui.theme.text_colors[color_id]
+				collapsible_color_picker(
+					&ui, &window,
+					tprintf("Text%v", color_id), &state.text_color_pickers[color_id],
+					&ui.theme.text_colors[color_id], color_picker_height,
+				)
 
-				begin_container(&ui, .Left, button_dim.y)
-				fill_container(&ui, ui.theme.colors[color_id])
-				end_container(&ui)
-
-				end_container(&ui)
-
-				if state.color_pickers[color_id].open {
-					begin_container(&ui, .Top, color_picker_height)
-
-					picker := &state.color_pickers[color_id]
-					color_picker(
-						&ui, &ui.theme.colors[color_id], &picker.hue, &picker.sat,
-						&picker.hue_drag, &picker.grad2d_drag,
-					)
-
-					end_container(&ui)
-				}
-
-				if button_state == .Clicked {
-					state.color_pickers[color_id].open = !state.color_pickers[color_id].open
-					window.skip_hang_once = true
+				if ui.theme.text_colors[color_id] != old_col {
+					for opened_file in &state.opened_files {
+						using opened_file
+						highlight(fullpath, content, &colors, ui.theme.text_colors)
+						highlight_filepath(fullpath, &fullpath_col, ui.theme.text_colors)
+					}
 				}
 			}
+
 			end_container(&ui)
 		}
 
@@ -245,10 +251,12 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 		max_col_width_glyphs = max(max_col_width_glyphs, cur_col_width)
 		line_count += 1 // NOTE(khvorov) Start counting from 1
 
-		colors := highlight(filepath, str, text_cols)
+		colors := make([][4]f32, len(str))
+		highlight(filepath, str, &colors, text_cols)
 
 		fullpath := get_full_filepath(filepath)
-		fullpath_col := highlight_filepath(fullpath, text_cols)
+		fullpath_col := make([][4]f32, len(fullpath))
+		highlight_filepath(fullpath, &fullpath_col, text_cols)
 
 		opened_file := OpenedFile {
 			path = strings.clone(filepath),
@@ -264,5 +272,39 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 			max_col_width_glyphs = max_col_width_glyphs,
 		}
 		append(&state.opened_files, opened_file)
+	}
+}
+
+collapsible_color_picker :: proc(
+	ui: ^UI, window: ^Window,
+	color_id_string: string, state: ^ColorPickerState, cur_color: ^[4]f32, height: int,
+) {
+	button_dim := get_button_dim(ui, color_id_string)
+	begin_container(ui, .Top, button_dim.y)
+	ui.current_layout = .Horizontal
+
+	button_state := button(ui = ui, label_str = color_id_string, text_align = .Begin)
+
+	begin_container(ui, .Left, button_dim.y)
+	fill_container(ui, cur_color^)
+	end_container(ui)
+
+	end_container(ui)
+
+	if state.open {
+		begin_container(ui, .Top, height)
+
+		old_col := cur_color
+		color_picker(
+			ui, cur_color, &state.hue, &state.sat,
+			&state.hue_drag, &state.grad2d_drag,
+		)
+
+		end_container(ui)
+	}
+
+	if button_state == .Clicked {
+		state.open = !state.open
+		window.skip_hang_once = true
 	}
 }
