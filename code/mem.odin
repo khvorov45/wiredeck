@@ -260,7 +260,7 @@ scratch_allocator_proc :: proc(
 // SECTION Arena
 //
 
-init_arena :: proc(arena: ^Arena, data: []byte) {
+arena_init :: proc(arena: ^Arena, data: []byte) {
 	arena^ = {}
 	arena.data = data
 }

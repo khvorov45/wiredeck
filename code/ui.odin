@@ -217,7 +217,7 @@ init_ui :: proc(
 		current_cmd_buffer = nil,
 	}
 
-	init_arena(&ui.arena, make([]u8, 4 * MEGABYTE))
+	arena_init(&ui.arena, make([]u8, 4 * MEGABYTE))
 	ui.arena_allocator = arena_allocator(&ui.arena)
 }
 

@@ -70,7 +70,7 @@ main :: proc() {
 	state.opened_files = buffer_from_slice(make([]OpenedFile, 2048))
 	open_file(&state, "build.bat", ui.theme.text_colors)
 	open_file(&state, "code/input.odin", ui.theme.text_colors)
-	open_file(&state, "tests/highlight-c/highlight-c.c", ui.theme.text_colors)
+	open_file(&state, "tests/highlight-c.c", ui.theme.text_colors)
 	state.editing = 1
 	state.sidebar_width = 350
 
