@@ -291,6 +291,7 @@ begin_container :: proc(
 	}
 
 	full_rect := _take_rect_from_container(last_container(ui), dir, size_after_resize)
+	visible_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
 	if scroll_spec != nil {
 		full_rect.dim.y = max(full_rect.dim.y, scroll_spec.(ContainerScroll).height)
 	}
@@ -332,10 +333,10 @@ begin_container :: proc(
 	if scroll_spec != nil {
 		scroll := scroll_spec.(ContainerScroll)
 
-		bounding_rect := clip_rect_to_rect(content_rect, last_container(ui).visible)
+		bounding_rect := clip_rect_to_rect(content_rect, visible_rect)
 		content_rect.dim.x -= ui.theme.sizes[.ScrollbarWidth]
 		track := _position_scrollbar_track(
-			clip_rect_to_rect(content_rect, last_container(ui).visible),
+			clip_rect_to_rect(content_rect, visible_rect),
 			ui.theme.sizes[.ScrollbarWidth],
 			.Vertical,
 		)
@@ -376,7 +377,7 @@ begin_container :: proc(
 	available_rect.topleft.y -= scroll_offset
 	append(
 		&ui.container_stack,
-		Container{available_rect, clip_rect_to_rect(content_rect, last_container(ui).visible)},
+		Container{available_rect, clip_rect_to_rect(content_rect, visible_rect)},
 	)
 	_cmd_outline(ui, full_rect, ui.theme.colors[.Border], border)
 
@@ -450,61 +451,33 @@ button :: proc(
 
 	state := MouseState.Normal
 
-	padding := get_button_pad(ui)
-	element_dim := get_button_dim(ui, label_str)
+	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str))
 
-	dir: Direction
-	size: int
-	switch ui.current_layout {
-	case .Horizontal:
-		size = element_dim.x
-		dir = .Left
-	case .Vertical:
-		size = element_dim.y
-		dir = .Top
-	}
-
-	rect := _take_rect_from_container(last_container(ui), dir, size)
-	ui.last_element_rect = rect
 	if process_input {
-		state = _get_rect_mouse_state(ui.input, rect)
+		state = _get_rect_mouse_state(ui.input, visible)
 	}
-
-	element_slack := rect.dim - element_dim
-	element_topleft := rect.topleft
-	if text_align == .Center {
-		element_topleft += element_slack / 2
-	} else if text_align == .End {
-		element_topleft += element_slack
-	}
-
-	text_topleft := element_topleft
-	text_topleft.x += padding.x[0]
-	text_topleft.y += padding.y[0]
 
 	if state >= .Hovered || active {
-		_cmd_rect(ui, rect, ui.theme.colors[.BackgroundHovered])
+		_cmd_rect(ui, visible, ui.theme.colors[.BackgroundHovered])
 	}
 
 	if state >= .Hovered {
 		ui.req_cursor = .Pointer
 	}
 
-	col: union{[4]f32, [][4]f32}
-	if label_col != nil {
-		col = label_col.([][4]f32)
-	} else {
-		col = ui.theme.text_colors[.Normal]
-	}
-	append(
-		ui.current_cmd_buffer,
-		UICommandTextline{
-			strings.clone(label_str, ui.arena_allocator), .Varwidth,
-			text_topleft, clip_rect_to_rect(rect, last_container(ui).visible), col,
-		},
-	)
+	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 
 	return state
+}
+
+text :: proc(
+	ui: ^UI,
+	label_str: string,
+	label_col: Maybe([][4]f32) = nil,
+	text_align: Align = .Center,
+) {
+	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str))
+	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 }
 
 text_area :: proc(ui: ^UI, file: ^OpenedFile) {
@@ -702,6 +675,8 @@ color_picker :: proc(
 ) {
 
 	full_rect := _take_entire_rect(last_container(ui))
+	visible_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
+
 	full_rect_copy := full_rect
 	picker2d_rect := _take_rect_from_rect(&full_rect_copy, .Left, min(full_rect_copy.dim.y, full_rect_copy.dim.x / 2))
 	_take_rect_from_rect(&full_rect_copy, .Left, 10)
@@ -752,12 +727,17 @@ color_picker :: proc(
 	}
 
 	sel_hue_outline := get_sel_hue_outline(sel_hue, hue_rect)
-	if _get_rect_mouse_state(ui.input, hue_rect) == .Pressed && _get_rect_mouse_state(ui.input, sel_hue_outline) == .Normal {
+	if _get_rect_mouse_state(ui.input, clip_rect_to_rect(hue_rect, visible_rect)) == .Pressed &&
+		_get_rect_mouse_state(ui.input, clip_rect_to_rect(sel_hue_outline, visible_rect)) == .Normal {
 		sel_hue = f32(ui.input.cursor_pos.y - hue_rect.topleft.y) / f32(hue_rect.dim.y - 1) * 359
 		sel_hue_outline = get_sel_hue_outline(sel_hue, hue_rect)
 	}
 
-	hue_drag_delta := _update_drag_ref(ui, hue_drag, sel_hue_outline, hue_rect)
+	hue_drag_delta := _update_drag_ref(
+		ui, hue_drag,
+		clip_rect_to_rect(sel_hue_outline, visible_rect),
+		clip_rect_to_rect(hue_rect, visible_rect),
+	)
 	sel_hue_outline.topleft.y += int(hue_drag_delta.y)
 	sel_hue = clamp(sel_hue + hue_drag_delta.y / f32(hue_rect.dim.y - 1) * 359, 0, 359)
 
@@ -769,7 +749,7 @@ color_picker :: proc(
 		_cmd_outline(ui = ui, rect = outline, color = [4]f32{0.75, 0.75, 0.75, 1}, clip_rect = clip)
 	}
 
-	cmd_double_outline(ui, sel_hue_outline, full_rect)
+	cmd_double_outline(ui, sel_hue_outline, visible_rect)
 
 	color4point_picker2d := Color4point{
 		topleft = hsv_to_rgb(sel_hue, 0, 100),
@@ -789,18 +769,24 @@ color_picker :: proc(
 	}
 
 	sel_2d_outline := get_sel_2d_outline(sel_sat, sel_brt, picker2d_rect)
-	if _get_rect_mouse_state(ui.input, picker2d_rect) == .Pressed && _get_rect_mouse_state(ui.input, sel_2d_outline) == .Normal {
+	if _get_rect_mouse_state(ui.input, clip_rect_to_rect(picker2d_rect, visible_rect)) == .Pressed &&
+		_get_rect_mouse_state(ui.input, clip_rect_to_rect(sel_2d_outline, visible_rect)) == .Normal {
 		sel_sat = f32(ui.input.cursor_pos.x - picker2d_rect.topleft.x) / f32(picker2d_rect.dim.x - 1) * 100
 		sel_brt = 100 - f32(ui.input.cursor_pos.y - picker2d_rect.topleft.y) / f32(picker2d_rect.dim.y - 1) * 100
 		sel_2d_outline = get_sel_2d_outline(sel_sat, sel_brt, picker2d_rect)
 	}
 
-	sel_2d_drag_delta := _update_drag_ref(ui, grad2d_drag, sel_2d_outline, picker2d_rect, true)
+	sel_2d_drag_delta := _update_drag_ref(
+		ui, grad2d_drag, 
+		clip_rect_to_rect(sel_2d_outline, visible_rect), 
+		clip_rect_to_rect(picker2d_rect, visible_rect), 
+		true,
+	)
 	sel_sat = clamp(sel_sat + sel_2d_drag_delta.x / f32(picker2d_rect.dim.x - 1) * 100, 0, 100)
 	sel_brt = clamp(sel_brt - sel_2d_drag_delta.y / f32(picker2d_rect.dim.y - 1) * 100, 0, 100)
 	sel_2d_outline = get_sel_2d_outline(sel_sat, sel_brt, picker2d_rect)
 
-	cmd_double_outline(ui, sel_2d_outline, picker2d_rect)
+	cmd_double_outline(ui, sel_2d_outline, clip_rect_to_rect(picker2d_rect, visible_rect))
 
 	sel_rgba^ = hsv_to_rgb(sel_hue, sel_sat, sel_brt)
 	sel_hue_init^ = sel_hue
@@ -968,6 +954,27 @@ hsv_to_rgb :: proc(hue, sat, brt: f32) -> [4]f32 {
 	return result
 }
 
+_take_element_from_last_container :: proc(ui: ^UI, dim: [2]int) -> (full: Rect2i, visible: Rect2i) {
+
+	dir: Direction
+	size: int
+	switch ui.current_layout {
+	case .Horizontal:
+		size = dim.x
+		dir = .Left
+	case .Vertical:
+		size = dim.y
+		dir = .Top
+	}
+
+	full = _take_rect_from_container(last_container(ui), dir, size)
+	ui.last_element_rect = full
+
+	visible = clip_rect_to_rect(full, last_container(ui).visible)
+
+	return full, visible
+}
+
 _take_rect_from_container :: proc(from_container: ^Container, dir: Direction, size_init: int) -> Rect2i {
 	rect := _take_rect_from_rect(&from_container.available, dir, size_init)
 	return rect
@@ -1082,6 +1089,42 @@ _cmd_outline :: proc(
 			_cmd_rect(ui, outline_rect, color)
 		}
 	}
+}
+
+_cmd_textline :: proc(
+	ui: ^UI, full, visible: Rect2i, label_str: string,
+	label_col: Maybe([][4]f32) = nil,
+	text_align: Align = .Center,
+) {
+	element_dim := get_button_dim(ui, label_str)
+
+	element_slack := full.dim - element_dim
+	element_topleft := full.topleft
+	if text_align == .Center {
+		element_topleft += element_slack / 2
+	} else if text_align == .End {
+		element_topleft += element_slack
+	}
+
+	padding := get_button_pad(ui)
+	text_topleft := element_topleft
+	text_topleft.x += padding.x[0]
+	text_topleft.y += padding.y[0]
+	col: union{[4]f32, [][4]f32}
+
+	if label_col != nil {
+		col = label_col.([][4]f32)
+	} else {
+		col = ui.theme.text_colors[.Normal]
+	}
+
+	append(
+		ui.current_cmd_buffer,
+		UICommandTextline{
+			strings.clone(label_str, ui.arena_allocator), .Varwidth,
+			text_topleft, visible, col,
+		},
+	)
 }
 
 _position_scrollbar_track :: proc(rect: Rect2i, size: int, orientation: Orientation) -> Rect2i {

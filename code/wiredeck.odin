@@ -50,7 +50,7 @@ main :: proc() {
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	window: Window
-	init_window(&window, "Wiredeck", 1000, 1000)
+	init_window(&window, "Wiredeck", 1000, 300)
 
 	renderer: Renderer
 	init_renderer(&renderer, 7680, 4320)
@@ -80,7 +80,7 @@ main :: proc() {
 	}
 
 	state.theme_editor_open = true
-	state.text_color_pickers[.FilepathSeparator].open = true
+	state.color_pickers[.Background].open = true
 
 	for window.is_running {
 
@@ -288,16 +288,22 @@ collapsible_color_picker :: proc(
 	fill_container(ui, cur_color^)
 	end_container(ui)
 
+	ui.current_layout = .Horizontal
+	text(ui = ui, label_str = color4f32_to_string(cur_color^, state.hue, state.sat), text_align = .Begin)
+
 	end_container(ui)
 
 	if state.open {
 		begin_container(ui, .Top, height)
 
-		old_col := cur_color
+		old_col := cur_color^
 		color_picker(
 			ui, cur_color, &state.hue, &state.sat,
 			&state.hue_drag, &state.grad2d_drag,
 		)
+		if cur_color^ != old_col {
+			window.skip_hang_once = true
+		}
 
 		end_container(ui)
 	}
@@ -306,4 +312,15 @@ collapsible_color_picker :: proc(
 		state.open = !state.open
 		window.skip_hang_once = true
 	}
+}
+
+color4f32_to_string :: proc(col: [4]f32, hue_init, sat_init: f32, allocator := context.temp_allocator) -> string {
+	context.allocator = allocator
+	col255 := col * 255
+	hue, sat, brt := rgb_to_hsv(col.rgb, hue_init, sat_init)
+	result := fmt.aprintf(
+		"#{0:02x}{1:02x}{2:02x} rgb({0:d}, {1:d}, {2:d}) hsv({3:d}, {4:d}, {5:d})",
+		int(col255.r), int(col255.g), int(col255.b), int(hue), int(sat), int(brt),
+	)
+	return result
 }
