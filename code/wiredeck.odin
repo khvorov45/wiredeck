@@ -17,6 +17,8 @@ State :: struct {
 	text_color_pickers: [TextColorID]ColorPickerState,
 	theme_editor_scroll_ref: Maybe(f32),
 	theme_editor_offset: int,
+	theme_editor_width: int,
+	theme_editor_drag: Maybe(DragRef),
 }
 
 ColorPickerState :: struct {
@@ -50,7 +52,7 @@ main :: proc() {
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	window: Window
-	init_window(&window, "Wiredeck", 1000, 300)
+	init_window(&window, "Wiredeck", 1000, 1000)
 
 	renderer: Renderer
 	init_renderer(&renderer, 7680, 4320)
@@ -72,15 +74,16 @@ main :: proc() {
 	open_file(&state, "code/input.odin", ui.theme.text_colors)
 	open_file(&state, "tests/highlight-c.c", ui.theme.text_colors)
 	state.editing = 1
-	state.sidebar_width = 350
+	state.sidebar_width = window.dim.x / 3
 
 	for color_id in ColorID {
 		state.color_pickers[color_id].hue, _, _ =
 			rgb_to_hsv(ui.theme.colors[color_id].rgb, state.color_pickers[color_id].hue, state.color_pickers[color_id].sat)
 	}
 
+	state.theme_editor_width = window.dim.x / 2
 	state.theme_editor_open = true
-	state.color_pickers[.Background].open = true
+	state.text_color_pickers[.FilepathSeparator].open = true
 
 	for window.is_running {
 
@@ -123,11 +126,10 @@ main :: proc() {
 			begin_container(&ui, .Bottom, 100)
 			end_container(&ui)*/
 
-			theme_editor_width := ui.total_dim.x / 2
 			theme_editor_height := one_color_height * len(ColorID) + open_color_piker_count * color_picker_height
 
 			begin_container(
-				&ui, .Right, theme_editor_width, {.Left},
+				&ui, .Right, ContainerResize{&state.theme_editor_width, &state.theme_editor_drag}, {.Left},
 				ContainerScroll{
 					theme_editor_height,
 					&state.theme_editor_offset,

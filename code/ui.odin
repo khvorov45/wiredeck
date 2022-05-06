@@ -187,7 +187,7 @@ init_ui :: proc(
 	theme.text_colors[.Normal] = [4]f32{0.9, 0.9, 0.9, 1}
 	theme.text_colors[.Comment] = [4]f32{0.5, 0.5, 0.5, 1}
 	theme.text_colors[.Punctuation] = [4]f32{0.8, 0.8, 0, 1}
-	theme.text_colors[.FilepathSeparator] = [4]f32{0.8, 0.0, 0.8, 1}
+	theme.text_colors[.FilepathSeparator] = [4]f32{255, 192, 146, 255} / 255
 
 	theme.sizes[.ButtonPadding] = 5
 	theme.sizes[.Separator] = 5
@@ -276,11 +276,17 @@ begin_container :: proc(
 		separator_rect_init := _take_rect_from_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
 
 		drag_delta := _update_drag_ref(ui, &sep_drag, separator_rect_init, last_container(ui).available)
+		
+		if dir == .Right || dir == .Bottom {
+			drag_delta = -drag_delta
+		}
+
 		if sep_is_vertical {
 			size_after_resize += int(drag_delta.x)
 		} else {
 			size_after_resize += int(drag_delta.y)
 		}
+
 
 		if sep_drag != nil || _get_rect_mouse_state(ui.input, separator_rect_init) > .Normal {
 			ui.req_cursor = .SizeNS
@@ -314,10 +320,12 @@ begin_container :: proc(
 
 	if resisable {
 		sep_rect := content_rect
+
 		#partial switch dir {
 		case .Left: sep_rect.topleft.x += content_rect.dim.x - ui.theme.sizes[.Separator]
 		case .Top: sep_rect.topleft.y += content_rect.dim.y - ui.theme.sizes[.Separator]
 		}
+
 		switch dir {
 		case .Left, .Right:
 			sep_rect.dim.x = ui.theme.sizes[.Separator]
@@ -326,6 +334,12 @@ begin_container :: proc(
 			sep_rect.dim.y = ui.theme.sizes[.Separator]
 			content_rect.dim.y -= ui.theme.sizes[.Separator]
 		}
+
+		#partial switch dir {
+		case .Right: content_rect.topleft.x += sep_rect.dim.x
+		case .Bottom: content_rect.topleft.y += sep_rect.dim.y
+		}
+
 		_cmd_rect(ui, sep_rect, ui.theme.colors[.Border])
 	}
 
@@ -678,9 +692,11 @@ color_picker :: proc(
 	visible_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
 
 	full_rect_copy := full_rect
-	picker2d_rect := _take_rect_from_rect(&full_rect_copy, .Left, min(full_rect_copy.dim.y, full_rect_copy.dim.x / 2))
-	_take_rect_from_rect(&full_rect_copy, .Left, 10)
-	hue_rect := _take_rect_from_rect(&full_rect_copy, .Left, 30)
+	gap_size := 10
+	hue_size := 30
+	picker2d_rect := _take_rect_from_rect(&full_rect_copy, .Left, full_rect.dim.x - hue_size - gap_size * 2)
+	_take_rect_from_rect(&full_rect_copy, .Left, gap_size)
+	hue_rect := _take_rect_from_rect(&full_rect_copy, .Left, hue_size)
 
 	subhue_rect_height := hue_rect.dim.y / 6
 	picker2d_rect.dim.y = subhue_rect_height * 6
@@ -777,9 +793,9 @@ color_picker :: proc(
 	}
 
 	sel_2d_drag_delta := _update_drag_ref(
-		ui, grad2d_drag, 
-		clip_rect_to_rect(sel_2d_outline, visible_rect), 
-		clip_rect_to_rect(picker2d_rect, visible_rect), 
+		ui, grad2d_drag,
+		clip_rect_to_rect(sel_2d_outline, visible_rect),
+		clip_rect_to_rect(picker2d_rect, visible_rect),
 		true,
 	)
 	sel_sat = clamp(sel_sat + sel_2d_drag_delta.x / f32(picker2d_rect.dim.x - 1) * 100, 0, 100)
