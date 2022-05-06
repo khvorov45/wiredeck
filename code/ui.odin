@@ -93,6 +93,25 @@ MouseState :: enum {
 	Clicked,
 }
 
+UIData :: union {
+	UIDataContainerBegin,
+	UIDataContainerEnd,
+	UIDataTextArea,
+}
+
+UIDataContainerBegin :: struct {
+	dir: Direction,
+	size_init: union{int, ContainerResize},
+	border: Directions,
+	scroll_spec: Maybe(ContainerScroll),
+}
+
+UIDataContainerEnd :: struct {}
+
+UIDataTextArea :: struct {
+	file: ^OpenedFile,
+}
+
 UICommand :: union {
 	UICommandRect,
 	UICommandTextline,
@@ -153,8 +172,8 @@ ScrollSpec :: struct {
 }
 
 ContainerResize :: struct {
-	size: ^int,
-	sep_drag: ^Maybe(DragRef),
+	size: int,
+	sep_drag: Maybe(DragRef),
 }
 
 ContainerScroll :: struct {
@@ -241,22 +260,20 @@ ui_end :: proc(ui: ^UI) {
 	}
 }
 
-begin_container :: proc(
-	ui: ^UI,
-	dir: Direction,
-	size_init: union{int, ContainerResize},
-	border: Directions = nil,
-	scroll_spec: Maybe(ContainerScroll) = nil,
-) {
+container_begin :: proc(ui: ^UI, data: ^UIDataContainerBegin) {
+	using data
+
 	size_after_resize: int
 	sep_drag: Maybe(DragRef)
 	resisable := false
-	switch val in size_init {
+	container_resize: ^ContainerResize
+	switch val in &size_init {
 	case int:
 		size_after_resize = val
 	case ContainerResize:
-		size_after_resize = val.size^
-		sep_drag = val.sep_drag^
+		container_resize = &val
+		size_after_resize = val.size
+		sep_drag = val.sep_drag
 		resisable = true
 	}
 
@@ -396,8 +413,8 @@ begin_container :: proc(
 	_cmd_outline(ui, full_rect, ui.theme.colors[.Border], border)
 
 	if resisable {
-		size_init.(ContainerResize).size^ = size_after_resize
-		size_init.(ContainerResize).sep_drag^ = sep_drag
+		container_resize.size = size_after_resize
+		container_resize.sep_drag = sep_drag
 
 		if sep_drag != nil {
 			ui.should_capture_mouse = true
@@ -494,7 +511,8 @@ text :: proc(
 	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 }
 
-text_area :: proc(ui: ^UI, file: ^OpenedFile) {
+text_area :: proc(ui: ^UI, args: UIDataTextArea) {
+	using args
 
 	line_count := file.line_count
 

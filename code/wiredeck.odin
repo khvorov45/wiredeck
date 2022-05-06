@@ -51,13 +51,16 @@ main :: proc() {
 	assert(scratch_buffer_init(&global_scratch, 10 * MEGABYTE) == .None)
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
-	window: Window
-	init_window(&window, "Wiredeck", 1000, 1000)
+	window_: Window
+	window := &window_
+	init_window(window, "Wiredeck", 1000, 1000)
 
-	renderer: Renderer
-	init_renderer(&renderer, 7680, 4320)
+	renderer_: Renderer
+	renderer := &renderer_
+	init_renderer(renderer, 7680, 4320)
 
-	input: Input
+	input_: Input
+	input := &input_
 	input.cursor_pos = -1
 
 	monospace_font: Font
@@ -65,14 +68,29 @@ main :: proc() {
 	varwidth_font: Font
 	init_font(&varwidth_font, "fonts/LiberationSans-Regular.ttf")
 
-	ui: UI
-	init_ui(&ui, window.dim.x, window.dim.y, &input, &monospace_font, &varwidth_font)
+	ui_: UI
+	ui := &ui_
+	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font)
 
-	state: State
+	opened_files_ := buffer_from_slice(make([]OpenedFile, 2048))
+	opened_files := &opened_files_
+	if file, success := open_file("build.bat", ui.theme.text_colors); success {
+		append(opened_files, file)
+	}
+
+	layout_: FreeList(UIData)
+	layout := &layout_
+	freelist_init(layout)
+	freelist_append(layout, UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil})
+	freelist_append(layout, UIDataContainerEnd{})
+	freelist_append(layout, UIDataTextArea{&opened_files[0]})
+
+	/*
+	state_: State
+	state := &state_
 	state.opened_files = buffer_from_slice(make([]OpenedFile, 2048))
-	open_file(&state, "build.bat", ui.theme.text_colors)
-	open_file(&state, "code/input.odin", ui.theme.text_colors)
-	open_file(&state, "tests/highlight-c.c", ui.theme.text_colors)
+	open_file(state, "code/input.odin", ui.theme.text_colors)
+	open_file(state, "tests/highlight-c.c", ui.theme.text_colors)
 	state.editing = 1
 	state.sidebar_width = window.dim.x / 3
 
@@ -84,6 +102,7 @@ main :: proc() {
 	state.theme_editor_width = window.dim.x / 2
 	state.theme_editor_open = true
 	state.text_color_pickers[.FilepathSeparator].open = true
+	*/
 
 	for window.is_running {
 
@@ -91,22 +110,35 @@ main :: proc() {
 		// SECTION Input
 		//
 
-		wait_for_input(&window, &input)
+		wait_for_input(window, input)
 
 		//
 		// SECTION UI
 		//
 
-		clear_buffers(&renderer, ui.theme.colors[.Background], window.dim)
+		clear_buffers(renderer, ui.theme.colors[.Background], window.dim)
 		ui.total_dim = renderer.pixels_dim
-		ui_begin(&ui)
+		ui_begin(ui)
+
+		for layout_entry := layout.sentinel.next; layout_entry != &layout.sentinel; layout_entry = layout_entry.next {
+			switch args_val in &layout_entry.entry {
+			case UIDataContainerBegin:
+				container_begin(ui, &args_val)
+			case UIDataContainerEnd:
+				end_container(ui)
+			case UIDataTextArea:
+				text_area(ui, args_val)
+			}
+		}
+
+		/*
 
 		// NOTE(khvorov) Theme editor
-		if was_pressed(&input, .F11) {
+		if was_pressed(input, .F11) {
 			state.theme_editor_open = !state.theme_editor_open
 		}
 		if state.theme_editor_open {
-			one_color_height := get_button_dim(&ui, "").y
+			one_color_height := get_button_dim(ui, "").y
 
 			color_picker_height := 200
 			open_color_piker_count := 0
@@ -121,15 +153,15 @@ main :: proc() {
 				}
 			}
 
-			/*begin_container(&ui, .Top, 100)
-			end_container(&ui)
-			begin_container(&ui, .Bottom, 100)
-			end_container(&ui)*/
+			/*begin_container(ui, .Top, 100)
+			end_container(ui)
+			begin_container(ui, .Bottom, 100)
+			end_container(ui)*/
 
 			theme_editor_height := one_color_height * len(ColorID) + open_color_piker_count * color_picker_height
 
 			begin_container(
-				&ui, .Right, ContainerResize{&state.theme_editor_width, &state.theme_editor_drag}, {.Left},
+				ui, .Right, ContainerResize{&state.theme_editor_width, &state.theme_editor_drag}, {.Left},
 				ContainerScroll{
 					theme_editor_height,
 					&state.theme_editor_offset,
@@ -139,7 +171,7 @@ main :: proc() {
 
 			for color_id in ColorID {
 				collapsible_color_picker(
-					&ui, &window,
+					ui, window,
 					tprintf("%v", color_id), &state.color_pickers[color_id],
 					&ui.theme.colors[color_id], color_picker_height,
 				)
@@ -148,7 +180,7 @@ main :: proc() {
 			for color_id in TextColorID {
 				old_col := ui.theme.text_colors[color_id]
 				collapsible_color_picker(
-					&ui, &window,
+					ui, window,
 					tprintf("Text%v", color_id), &state.text_color_pickers[color_id],
 					&ui.theme.text_colors[color_id], color_picker_height,
 				)
@@ -162,17 +194,17 @@ main :: proc() {
 				}
 			}
 
-			end_container(&ui)
+			end_container(ui)
 		}
 
 		// NOTE(khvorov) Sidebar
 		{
-			begin_container(&ui, .Left, ContainerResize{&state.sidebar_width, &state.sidebar_drag})
+			begin_container(ui, .Left, ContainerResize{&state.sidebar_width, &state.sidebar_drag})
 			ui.current_layout = .Vertical
 
 			for opened_file, index in state.opened_files {
 				button_state := button(
-					ui = &ui,
+					ui = ui,
 					label_str = opened_file.fullpath,
 					label_col = opened_file.fullpath_col,
 					text_align = .End,
@@ -182,24 +214,23 @@ main :: proc() {
 				}
 			}
 
-			end_container(&ui)
+			end_container(ui)
 		}
 
 		// NOTE(khvorov) Editors
 		if editing, ok := state.editing.(int); ok {
-			file := &state.opened_files[editing]
-			text_area(&ui, &state.opened_files[editing])
+			file := state.opened_files[editing]
+			text_area(ui, &state.opened_files[editing])
 		}
+		*/
 
 		if ui.should_capture_mouse {
-			set_mouse_capture(&window, true)
+			set_mouse_capture(window, true)
 		} else {
-			set_mouse_capture(&window, false)
+			set_mouse_capture(window, false)
 		}
-
-		set_cursor(&window, ui.req_cursor)
-
-		ui_end(&ui)
+		set_cursor(window, ui.req_cursor)
+		ui_end(ui)
 
 		//
 		// SECTION Render
@@ -208,20 +239,22 @@ main :: proc() {
 		for cmd_ui in ui.commands {
 			switch cmd in cmd_ui {
 			case UICommandRect:
-				draw_rect_px(&renderer, cmd.rect, cmd.color)
+				draw_rect_px(renderer, cmd.rect, cmd.color)
 			case UICommandTextline:
-				draw_text_px(&renderer, ui.fonts[cmd.font_id], cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.colors)
+				draw_text_px(renderer, ui.fonts[cmd.font_id], cmd.str, cmd.text_topleft, cmd.clip_rect, cmd.colors)
 			case UICommandRectGradient2d:
-				draw_rect_gradient2d(&renderer, cmd.grad)
+				draw_rect_gradient2d(renderer, cmd.grad)
 			}
 		}
 
-		display_pixels(&window, renderer.pixels, renderer.pixels_dim)
+		display_pixels(window, renderer.pixels, renderer.pixels_dim)
 	}
 }
 
-open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f32) {
-	if file_contents, ok := read_entire_file(filepath); ok {
+open_file :: proc(filepath: string, text_cols: [TextColorID][4]f32) -> (opened_file: OpenedFile, success: bool) {
+
+	file_contents: []u8
+	if file_contents, success = read_entire_file(filepath); success {
 
 		// NOTE(khvorov) Count lines and column widths
 		str := string(file_contents)
@@ -259,7 +292,7 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 		fullpath_col := make([][4]f32, len(fullpath))
 		highlight_filepath(fullpath, &fullpath_col, text_cols)
 
-		opened_file := OpenedFile {
+		opened_file = OpenedFile {
 			path = strings.clone(filepath),
 			fullpath = fullpath,
 			fullpath_col = fullpath_col,
@@ -272,21 +305,23 @@ open_file :: proc(state: ^State, filepath: string, text_cols: [TextColorID][4]f3
 			line_count = line_count,
 			max_col_width_glyphs = max_col_width_glyphs,
 		}
-		append(&state.opened_files, opened_file)
 	}
+
+	return opened_file, success
 }
 
+/*
 collapsible_color_picker :: proc(
 	ui: ^UI, window: ^Window,
 	color_id_string: string, state: ^ColorPickerState, cur_color: ^[4]f32, height: int,
 ) {
 	button_dim := get_button_dim(ui, color_id_string)
-	begin_container(ui, .Top, button_dim.y)
+	begin_container(ui, UIDataContainerBegin{.Top, button_dim.y, {}, nil})
 	ui.current_layout = .Horizontal
 
 	button_state := button(ui = ui, label_str = color_id_string, text_align = .Begin)
 
-	begin_container(ui, .Left, button_dim.y)
+	begin_container(ui, UIDataContainerBegin{.Left, button_dim.y, {}, nil})
 	fill_container(ui, cur_color^)
 	end_container(ui)
 
@@ -296,7 +331,7 @@ collapsible_color_picker :: proc(
 	end_container(ui)
 
 	if state.open {
-		begin_container(ui, .Top, height)
+		begin_container(ui, UIDataContainerBegin{.Top, height, {}, nil})
 
 		old_col := cur_color^
 		color_picker(
@@ -315,6 +350,7 @@ collapsible_color_picker :: proc(
 		window.skip_hang_once = true
 	}
 }
+*/
 
 color4f32_to_string :: proc(col: [4]f32, hue_init, sat_init: f32, allocator := context.temp_allocator) -> string {
 	context.allocator = allocator
