@@ -1,27 +1,33 @@
 package wiredeck
 
-FreeList :: struct($EntryType: typeid) {
-	sentinel: FreeListEntry(EntryType),
-	free: ^FreeListEntry(EntryType),
+Freelist :: struct($EntryType: typeid) {
+	sentinel: FreelistEntry(EntryType),
+	free: ^FreelistEntry(EntryType),
 	allocator: Allocator,
 }
 
-FreeListEntry :: struct($EntryType: typeid) {
+FreelistEntry :: struct($EntryType: typeid) {
 	entry: EntryType,
-	prev, next: ^FreeListEntry(EntryType),
+	prev, next: ^FreelistEntry(EntryType),
 }
 
-freelist_init :: proc(list: ^FreeList($EntryType), allocator := context.allocator) {
+freelist_init :: proc(list: ^Freelist($EntryType), allocator := context.allocator) {
 	list^ = {}
 	list.allocator = allocator
 	list.sentinel.prev = &list.sentinel
 	list.sentinel.next = &list.sentinel
 }
 
-freelist_append :: proc(list: ^FreeList($EntryType), entry: EntryType) {
+freelist_create :: proc($Type: typeid) -> Freelist(Type) {
+	list: Freelist(Type)
+	freelist_init(&list)
+	return list
+}
+
+freelist_append :: proc(list: ^Freelist($EntryType), entry: EntryType) -> ^FreelistEntry(EntryType) {
 
 	if list.free == nil {
-		list.free = new(FreeListEntry(EntryType), list.allocator)
+		list.free = new(FreelistEntry(EntryType), list.allocator)
 		list.free^ = {}
 	}
 
@@ -34,4 +40,16 @@ freelist_append :: proc(list: ^FreeList($EntryType), entry: EntryType) {
 
 	new_entry.prev.next = new_entry
 	new_entry.next.prev = new_entry
+
+	return new_entry
+}
+
+freelist_first :: proc(list: ^Freelist($EntryType)) -> ^FreelistEntry(EntryType) {
+	result := &list.sentinel.next
+	return result
+}
+
+freelist_last :: proc(list: ^Freelist($EntryType)) -> ^FreelistEntry(EntryType) {
+	result := &list.sentinel.prev
+	return result
 }
