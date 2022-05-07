@@ -72,10 +72,6 @@ main :: proc() {
 	ui := &ui_
 	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font)
 
-	layout_: Layout
-	layout := &layout_
-	init_layout(layout)
-
 	opened_files_: Freelist(OpenedFile)
 	opened_files := &opened_files_
 	freelist_init(opened_files)
@@ -83,10 +79,12 @@ main :: proc() {
 		freelist_append(opened_files, file)
 	}
 
-	panel1 := add_panel(layout, &layout.root, "Panel 1")
-	panel1.contents = TextEditor{}
+	layout_: Layout
+	layout := &layout_
+	init_layout(layout)
 
-	add_panel(layout, &layout.root, "Panel 2")
+	attach_panel(layout, &layout.root, add_panel(layout, "Panel 1", TextEditor{}))
+	attach_panel(layout, &layout.root, add_panel(layout, "Panel 2", nil))
 
 	/*ui_data_storage_ := freelist_create(UIData)
 	ui_data_storage := &ui_data_storage_
@@ -170,18 +168,20 @@ main :: proc() {
 			button_height := get_button_dim(ui, "T").y
 
 			begin_container(ui, .Top, button_height)
-			panels := &multipanel.panels
-			for panel := panels.sentinel.next; 
-				!linkedlist_entry_is_sentinel(panels, panel);
-				panel = panel.next {
+			panel_entries := &multipanel.panel_entries
+			for panel_entry := panel_entries.sentinel.next; 
+				!linkedlist_entry_is_sentinel(panel_entries, panel_entry);
+				panel_entry = panel_entry.next {
+
+				panel := &panel_entry.entry.entry
 
 				button_state := button(
 					ui = ui,
-					label_str = panel.entry.name,
-					active = ptr_eq(multipanel.active, panel.entry),
+					label_str = panel.name,
+					active = ptr_eq(multipanel.active, panel),
 				)
 				if button_state == .Clicked {
-					multipanel.active = panel.entry
+					multipanel.active = panel
 					window.skip_hang_once = true
 				}
 			}
@@ -192,7 +192,9 @@ main :: proc() {
 			}
 		}
 
+		begin_container(ui, .Top, ui.total_dim.y / 2)
 		build_multipanel(window, ui, &layout.root, &opened_files.used)
+		end_container(ui)
 
 		/*
 		for layout_entry := layout.sentinel.next; layout_entry != &layout.sentinel; layout_entry = layout_entry.next {

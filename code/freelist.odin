@@ -77,7 +77,7 @@ linkedlist_remove_last :: proc(list: ^Linkedlist($EntryType)) -> ^LinkedlistEntr
 }
 
 linkedlist_remove_last_or_new :: proc(
-	list: ^Linkedlist($EntryType), allocator: Allocator,
+	list: ^Linkedlist($EntryType), entry: EntryType, allocator: Allocator,
 ) -> ^LinkedlistEntry(EntryType) {
 	new_entry: ^LinkedlistEntry(EntryType)
 	if linkedlist_is_empty(list) {
@@ -86,7 +86,14 @@ linkedlist_remove_last_or_new :: proc(
 		new_entry = linkedlist_remove_last(list)
 	}
 	new_entry^ = {}
+	new_entry.entry = entry
 	return new_entry
+}
+
+linkedlist_remove_clear_append :: proc(entry: ^LinkedlistEntry($EntryType), dest: ^Linkedlist(EntryType)) {
+	linkedlist_entry_remove(entry)
+	entry^ = {}
+	linkedlist_append(dest, entry)
 }
 
 freelist_init :: proc(list: ^Freelist($EntryType), allocator := context.allocator) {
@@ -97,14 +104,11 @@ freelist_init :: proc(list: ^Freelist($EntryType), allocator := context.allocato
 }
 
 freelist_append :: proc(list: ^Freelist($EntryType), entry: EntryType) -> ^LinkedlistEntry(EntryType) {
-	new_entry := linkedlist_remove_last_or_new(&list.free, list.allocator)
-	new_entry.entry = entry
+	new_entry := linkedlist_remove_last_or_new(&list.free, entry, list.allocator)
 	linkedlist_append(&list.used, new_entry)
 	return new_entry
 }
 
 freelist_remove :: proc(list: ^Freelist($EntryType), entry: ^LinkedlistEntry(EntryType)) {
-	linkedlist_entry_remove(entry)
-	entry^ = {}
-	linkedlist_append(&list.free, entry)
+	linkedlist_remove_clear_append(entry, &list.free)
 }

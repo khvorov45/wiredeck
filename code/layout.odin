@@ -2,13 +2,13 @@ package wiredeck
 
 Layout :: struct {
 	root: Multipanel,
-	panels_free: Linkedlist(Panel),
-	panel_ptrs_free: Linkedlist(^Panel),
+	panels: Freelist(Panel),
+	panel_refs_free: Linkedlist(PanelRef),
 	allocator: Allocator,
 }
 
 Multipanel :: struct {
-	panels: Linkedlist(^Panel),
+	panel_entries: Linkedlist(PanelRef),
 	active: ^Panel,
 }
 
@@ -16,7 +16,10 @@ Panel :: struct {
 	name_chars: [64]u8,
 	name: string,
 	contents: PanelContents,
+	ref_count: int,
 }
+
+PanelRef :: ^LinkedlistEntry(Panel)
 
 PanelContents :: union {
 	Multipanel,
@@ -34,13 +37,13 @@ ThemeEditor :: struct {}
 init_layout :: proc(layout: ^Layout, allocator := context.allocator) {
 	layout^ = {}
 	layout.allocator = allocator
-	linkedlist_init(&layout.root.panels, new(LinkedlistEntry(^Panel), allocator))
-	linkedlist_init(&layout.panels_free, new(LinkedlistEntry(Panel), allocator))
-	linkedlist_init(&layout.panel_ptrs_free, new(LinkedlistEntry(^Panel), allocator))
+	linkedlist_init(&layout.root.panel_entries, new(LinkedlistEntry(PanelRef), allocator))
+	freelist_init(&layout.panels, allocator)
+	linkedlist_init(&layout.panel_refs_free, new(LinkedlistEntry(PanelRef), allocator))
 }
 
-add_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, name: string) -> ^Panel {
-	panel := linkedlist_remove_last_or_new(&layout.panels_free, layout.allocator)
+add_panel :: proc(layout: ^Layout, name: string, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
+	panel := freelist_append(&layout.panels, Panel{})
 
 	name_len := min(len(name), len(panel.entry.name_chars))
 	for index in 0..<name_len {
@@ -48,13 +51,22 @@ add_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, name: string) -> ^Pa
 	}
 	panel.entry.name = string(panel.entry.name_chars[:name_len])
 
-	panel_ptr := linkedlist_remove_last_or_new(&layout.panel_ptrs_free, layout.allocator)
-	panel_ptr.entry = &panel.entry
-	linkedlist_append(&multipanel.panels, panel_ptr)
+	panel.entry.contents = contents
+	panel.entry.ref_count = 0
+
+	return panel
+}
+
+attach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^LinkedlistEntry(Panel)) -> ^Panel {
+
+	panel.entry.ref_count += 1
+
+	panel_ref := linkedlist_remove_last_or_new(&layout.panel_refs_free, panel, layout.allocator)
+	linkedlist_append(&multipanel.panel_entries, panel_ref)
 
 	if multipanel.active == nil {
-		multipanel.active = panel_ptr.entry
+		multipanel.active = &panel.entry
 	}
 
-	return panel_ptr.entry
+	return &panel.entry
 }
