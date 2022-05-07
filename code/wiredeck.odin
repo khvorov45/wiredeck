@@ -72,18 +72,55 @@ main :: proc() {
 	ui := &ui_
 	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font)
 
-	opened_files_ := buffer_from_slice(make([]OpenedFile, 2048))
+	layout_: Layout
+	layout := &layout_
+	init_layout(layout)
+
+	opened_files_: Freelist(OpenedFile)
 	opened_files := &opened_files_
+	freelist_init(opened_files)
 	if file, success := open_file("build.bat", ui.theme.text_colors); success {
-		append(opened_files, file)
+		freelist_append(opened_files, file)
 	}
 
-	layout_: FreeList(UIData)
+	panel1 := add_panel(layout, &layout.root, "Panel 1")
+	panel1.contents = TextEditor{}
+
+	add_panel(layout, &layout.root, "Panel 2")
+
+	/*ui_data_storage_ := freelist_create(UIData)
+	ui_data_storage := &ui_data_storage_
+
+	ui_data_add_container :: proc(storage: ^Freelist(UIData), data: UIDataContainerBegin) -> ^UIDataContainerBegin {
+		entry := freelist_append(storage, data)
+		entry_data := &entry.entry.(UIDataContainerBegin)
+		return entry_data
+	}
+
+	ui_root := ui_data_add_container(
+		ui_data_storage, 
+		UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil, freelist_create(^UIData)},
+	)*/
+
+	/*
+	layout_: Freelist(UIData)
 	layout := &layout_
 	freelist_init(layout)
-	freelist_append(layout, UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil})
+	first_container := freelist_append(layout, UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil, freelist_create(^UIData)})
+	file_viewer := freelist_append(layout, UIDataOpenedFileViewer{opened_files})
+
+	first_container_data := &first_container.entry.(UIDataContainerBegin)
+	freelist_append(first_container_data.contents)
+
+	first_container_contents := freelist_create(^UIData)
+
+	data_opened_file_viewer: UIData = UIDataOpenedFileViewer{opened_files}
+	freelist_append(&first_container_contents, &data_opened_file_viewer)
+
+	freelist_append(layout, UIDataOpenedFileViewer{opened_files})
 	freelist_append(layout, UIDataContainerEnd{})
-	freelist_append(layout, UIDataTextArea{&opened_files[0]})
+	freelist_append(layout, UIDataTextArea{&opened_files.sentinel.next.entry})
+	*/
 
 	/*
 	state_: State
@@ -120,16 +157,58 @@ main :: proc() {
 		ui.total_dim = renderer.pixels_dim
 		ui_begin(ui)
 
+		build_panel_contents :: proc(window: ^Window, ui: ^UI, panel: ^PanelContents, opened_files: ^Linkedlist(OpenedFile)) {
+			switch panel_val in panel {
+			case Multipanel: build_multipanel(window, ui, &panel_val, opened_files)
+			case OpenedFileViewer:
+			case TextEditor: text_area(ui, &opened_files.sentinel.next.entry)
+			case ThemeEditor:
+			}
+		}
+
+		build_multipanel :: proc(window: ^Window, ui: ^UI, multipanel: ^Multipanel, opened_files: ^Linkedlist(OpenedFile)) {
+			button_height := get_button_dim(ui, "T").y
+
+			begin_container(ui, .Top, button_height)
+			panels := &multipanel.panels
+			for panel := panels.sentinel.next; 
+				!linkedlist_entry_is_sentinel(panels, panel);
+				panel = panel.next {
+
+				button_state := button(
+					ui = ui,
+					label_str = panel.entry.name,
+					active = ptr_eq(multipanel.active, panel.entry),
+				)
+				if button_state == .Clicked {
+					multipanel.active = panel.entry
+					window.skip_hang_once = true
+				}
+			}
+			end_container(ui)
+
+			if multipanel.active != nil {
+				build_panel_contents(window, ui, &multipanel.active.contents, opened_files)
+			}
+		}
+
+		build_multipanel(window, ui, &layout.root, &opened_files.used)
+
+		/*
 		for layout_entry := layout.sentinel.next; layout_entry != &layout.sentinel; layout_entry = layout_entry.next {
 			switch args_val in &layout_entry.entry {
 			case UIDataContainerBegin:
 				container_begin(ui, &args_val)
 			case UIDataContainerEnd:
-				end_container(ui)
+				container_end(ui)
 			case UIDataTextArea:
-				text_area(ui, args_val)
+				text_area(ui, &args_val)
+			case UIDataOpenedFileViewer:
+				//clicked := opened_file_viewer(ui, &args_val)
+				//add_clicked_to_last_active_container(clicked)
 			}
 		}
+		*/
 
 		/*
 

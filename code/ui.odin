@@ -9,7 +9,6 @@ UI :: struct {
 	monospace_px_width:   int,
 	theme:                Theme,
 	total_dim:            [2]int,
-	current_layout:       Orientation,
 	container_stack:      [dynamic]Container,
 	commands:             [dynamic]UICommand,
 	last_element_rect:    Rect2i,
@@ -208,7 +207,6 @@ init_ui :: proc(
 		monospace_px_width = get_glyph_info(monospace_font, 'a').advance_x,
 		theme = theme,
 		total_dim = [2]int{width, height},
-		current_layout = .Horizontal,
 		container_stack = buffer_from_slice(make([]Container, 100)),
 		commands = buffer_from_slice(make([]UICommand, 1000)),
 		last_element_rect = Rect2i{},
@@ -457,6 +455,7 @@ end_floating :: proc(ui: ^UI) {
 button :: proc(
 	ui: ^UI,
 	label_str: string,
+	orientation: Orientation = .Horizontal,
 	label_col: Maybe([][4]f32) = nil,
 	active: bool = false,
 	text_align: Align = .Center,
@@ -465,7 +464,7 @@ button :: proc(
 
 	state := MouseState.Normal
 
-	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str))
+	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), orientation)
 
 	if process_input {
 		state = _get_rect_mouse_state(ui.input, visible)
@@ -487,10 +486,11 @@ button :: proc(
 text :: proc(
 	ui: ^UI,
 	label_str: string,
+	orientation: Orientation = .Horizontal,
 	label_col: Maybe([][4]f32) = nil,
 	text_align: Align = .Center,
 ) {
-	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str))
+	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), orientation)
 	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 }
 
@@ -970,11 +970,11 @@ hsv_to_rgb :: proc(hue, sat, brt: f32) -> [4]f32 {
 	return result
 }
 
-_take_element_from_last_container :: proc(ui: ^UI, dim: [2]int) -> (full: Rect2i, visible: Rect2i) {
+_take_element_from_last_container :: proc(ui: ^UI, dim: [2]int, layout: Orientation) -> (full: Rect2i, visible: Rect2i) {
 
 	dir: Direction
 	size: int
-	switch ui.current_layout {
+	switch layout {
 	case .Horizontal:
 		size = dim.x
 		dir = .Left

@@ -1,55 +1,110 @@
 package wiredeck
 
 Freelist :: struct($EntryType: typeid) {
-	sentinel: FreelistEntry(EntryType),
-	free: ^FreelistEntry(EntryType),
+	used: Linkedlist(EntryType),
+	free: Linkedlist(EntryType),
 	allocator: Allocator,
 }
 
-FreelistEntry :: struct($EntryType: typeid) {
+// Doubly-linked circular with ever-present sentinel
+Linkedlist :: struct($EntryType: typeid) {
+	// NOTE(khvorov) Pointer here so you can move the list around on the stack
+	sentinel: ^LinkedlistEntry(EntryType),
+}
+
+LinkedlistEntry :: struct($EntryType: typeid) {
 	entry: EntryType,
-	prev, next: ^FreelistEntry(EntryType),
+	prev, next: ^LinkedlistEntry(EntryType),
+}
+
+linkedlist_init :: proc(list: ^Linkedlist($EntryType), sentinel: ^LinkedlistEntry(EntryType)) {
+	list^ = {}
+	list.sentinel = sentinel
+	list.sentinel^ = {}
+	list.sentinel.prev = sentinel
+	list.sentinel.next = sentinel
+}
+
+linkedlist_entry_is_sentinel :: proc(
+	list: ^Linkedlist($EntryType), entry: ^LinkedlistEntry(EntryType),
+) -> bool {
+	result := ptr_eq(entry, list.sentinel)
+	return result
+}
+
+linkedlist_is_empty :: proc(list: ^Linkedlist($EntryType)) -> bool {
+	result := linkedlist_entry_is_sentinel(list, list.sentinel.next)
+	if result {
+		assert(linkedlist_entry_is_sentinel(list, list.sentinel.prev))
+	}
+	return result
+}
+
+linkedlist_append :: proc(list: ^Linkedlist($EntryType), entry: ^LinkedlistEntry(EntryType)) {
+	entry.prev = list.sentinel.prev
+	entry.next = list.sentinel
+	entry.prev.next = entry
+	entry.next.prev = entry
+}
+
+linkedlist_entry_remove :: proc(entry: ^LinkedlistEntry($EntryType)) {
+	entry.prev.next = entry.next
+	entry.next.prev = entry.prev
+	entry.prev = nil
+	entry.next = nil
+}
+
+linkedlist_first :: proc(list: ^Linkedlist($EntryType)) -> ^LinkedlistEntry(EntryType) {
+	result := list.sentinel.next
+	return result
+}
+
+linkedlist_last :: proc(list: ^Linkedlist($EntryType)) -> ^LinkedlistEntry(EntryType) {
+	result := list.sentinel.prev
+	return result
+}
+
+linkedlist_remove_first :: proc(list: ^Linkedlist($EntryType)) -> ^LinkedlistEntry(EntryType) {
+	result := linkedlist_first(list)
+	linkedlist_entry_remove(result)
+	return result
+}
+
+linkedlist_remove_last :: proc(list: ^Linkedlist($EntryType)) -> ^LinkedlistEntry(EntryType) {
+	result := linkedlist_last(list)
+	linkedlist_entry_remove(result)
+	return result
+}
+
+linkedlist_remove_last_or_new :: proc(
+	list: ^Linkedlist($EntryType), allocator: Allocator,
+) -> ^LinkedlistEntry(EntryType) {
+	new_entry: ^LinkedlistEntry(EntryType)
+	if linkedlist_is_empty(list) {
+		new_entry = new(LinkedlistEntry(EntryType), allocator)
+	} else {
+		new_entry = linkedlist_remove_last(list)
+	}
+	new_entry^ = {}
+	return new_entry
 }
 
 freelist_init :: proc(list: ^Freelist($EntryType), allocator := context.allocator) {
 	list^ = {}
 	list.allocator = allocator
-	list.sentinel.prev = &list.sentinel
-	list.sentinel.next = &list.sentinel
+	linkedlist_init(&list.used, new(LinkedlistEntry(EntryType), allocator))
+	linkedlist_init(&list.free, new(LinkedlistEntry(EntryType), allocator))
 }
 
-freelist_create :: proc($Type: typeid) -> Freelist(Type) {
-	list: Freelist(Type)
-	freelist_init(&list)
-	return list
-}
-
-freelist_append :: proc(list: ^Freelist($EntryType), entry: EntryType) -> ^FreelistEntry(EntryType) {
-
-	if list.free == nil {
-		list.free = new(FreelistEntry(EntryType), list.allocator)
-		list.free^ = {}
-	}
-
-	new_entry := list.free
-	list.free = list.free.next
-
+freelist_append :: proc(list: ^Freelist($EntryType), entry: EntryType) -> ^LinkedlistEntry(EntryType) {
+	new_entry := linkedlist_remove_last_or_new(&list.free, list.allocator)
 	new_entry.entry = entry
-	new_entry.prev = list.sentinel.prev
-	new_entry.next = &list.sentinel
-
-	new_entry.prev.next = new_entry
-	new_entry.next.prev = new_entry
-
+	linkedlist_append(&list.used, new_entry)
 	return new_entry
 }
 
-freelist_first :: proc(list: ^Freelist($EntryType)) -> ^FreelistEntry(EntryType) {
-	result := &list.sentinel.next
-	return result
-}
-
-freelist_last :: proc(list: ^Freelist($EntryType)) -> ^FreelistEntry(EntryType) {
-	result := &list.sentinel.prev
-	return result
+freelist_remove :: proc(list: ^Freelist($EntryType), entry: ^LinkedlistEntry(EntryType)) {
+	linkedlist_entry_remove(entry)
+	entry^ = {}
+	linkedlist_append(&list.free, entry)
 }

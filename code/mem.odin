@@ -72,6 +72,11 @@ buffer_from_slice :: proc "contextless" (backing: $T/[]$E) -> [dynamic]E {
 	}
 }
 
+ptr_eq :: proc(p1, p2: rawptr) -> bool {
+	result := uintptr(p1) == uintptr(p2)
+	return result
+}
+
 //
 // SECTION Memory block
 //
