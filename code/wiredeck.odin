@@ -182,17 +182,20 @@ main :: proc() {
 					label_str = panel.name,
 					active = ptr_eq(multipanel.active, panel),
 				)
-				if button_state == .Clicked {
+
+				next_panel_entry := panel_entry.next
+				skip_hang_once := true
+				#partial switch button_state {
+				case .Clicked:
 					multipanel.active = panel
-					window.skip_hang_once = true
+				case .ClickedMiddle:
+					next_panel_entry = detach_panel(layout, multipanel, panel_entry)
+				case:
+					skip_hang_once = false
 				}
 
-				if button(ui = ui, label_str = "x") == .Clicked {
-					panel_entry = detach_panel(layout, multipanel, panel_entry)
-					window.skip_hang_once = true
-				} else {
-					panel_entry = panel_entry.next
-				}
+				window.skip_hang_once ||= skip_hang_once
+				panel_entry = next_panel_entry
 			}
 			end_container(ui)
 

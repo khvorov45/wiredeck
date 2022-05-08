@@ -90,6 +90,8 @@ MouseState :: enum {
 	Hovered,
 	Pressed,
 	Clicked,
+	PressedMiddle,
+	ClickedMiddle,
 }
 
 UICommand :: union {
@@ -274,7 +276,7 @@ begin_container :: proc(
 		separator_rect_init := _take_rect_from_rect(&container_rect_init, dir_opposite(dir), ui.theme.sizes[.Separator])
 
 		drag_delta := _update_drag_ref(ui, &sep_drag, separator_rect_init, last_container(ui).available)
-		
+
 		if dir == .Right || dir == .Bottom {
 			drag_delta = -drag_delta
 		}
@@ -463,7 +465,6 @@ button :: proc(
 ) -> MouseState {
 
 	state := MouseState.Normal
-
 	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), orientation)
 
 	if process_input {
@@ -479,7 +480,6 @@ button :: proc(
 	}
 
 	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
-
 	return state
 }
 
@@ -1073,12 +1073,25 @@ _get_rect_mouse_state :: proc(input: ^Input, rect: Rect2i) -> MouseState {
 	if point_inside_rect(input.cursor_pos, rect) {
 		state = .Hovered
 		mouse_left_down := input.mouse_buttons[.MouseLeft].key.ended_down
-		if was_pressed(input, .MouseLeft) && mouse_left_down {
+		mouse_middle_down := input.mouse_buttons[.MouseMiddle].key.ended_down
+
+		switch {
+		case was_pressed(input, .MouseLeft) && mouse_left_down:
 			state = .Pressed
-		} else if was_unpressed(input, .MouseLeft) && !mouse_left_down {
+
+		case was_unpressed(input, .MouseLeft) && !mouse_left_down:
 			last_pressed_inside := point_inside_rect(input.mouse_buttons[.MouseLeft].last_down_cursor_pos, rect)
 			if last_pressed_inside {
 				state = .Clicked
+			}
+
+		case was_pressed(input, .MouseMiddle) && mouse_middle_down:
+			state = .PressedMiddle
+
+		case was_unpressed(input, .MouseMiddle) && !mouse_middle_down:
+			last_pressed_inside := point_inside_rect(input.mouse_buttons[.MouseMiddle].last_down_cursor_pos, rect)
+			if last_pressed_inside {
+				state = .ClickedMiddle
 			}
 		}
 	}
