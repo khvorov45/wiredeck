@@ -72,19 +72,24 @@ main :: proc() {
 	ui := &ui_
 	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font)
 
-	opened_files_: Freelist(OpenedFile)
-	opened_files := &opened_files_
-	freelist_init(opened_files)
-	if file, success := open_file("build.bat", ui.theme.text_colors); success {
-		freelist_append(opened_files, file)
-	}
-
 	layout_: Layout
 	layout := &layout_
 	init_layout(layout)
 
-	attach_panel(layout, &layout.root, add_panel(layout, "Panel 1", TextEditor{}))
-	attach_panel(layout, &layout.root, add_panel(layout, "Panel 2", nil))
+	opened_files_: Freelist(OpenedFile)
+	opened_files := &opened_files_
+	freelist_init(opened_files)
+
+	open_and_create_panel :: proc(layout: ^Layout, ui: ^UI, opened_files: ^Freelist(OpenedFile), name: string) {
+		if file, success := open_file(name, ui.theme.text_colors); success {
+			file_in_list := freelist_append(opened_files, file)
+			attach_panel(layout, &layout.root, add_panel(layout, name, TextEditor{&file_in_list.entry}))
+		}
+	}
+
+	open_and_create_panel(layout, ui, opened_files, "build.bat")
+	open_and_create_panel(layout, ui, opened_files, "shell.bat")
+	open_and_create_panel(layout, ui, opened_files, "sdlbug.c")
 
 	/*ui_data_storage_ := freelist_create(UIData)
 	ui_data_storage := &ui_data_storage_
@@ -96,7 +101,7 @@ main :: proc() {
 	}
 
 	ui_root := ui_data_add_container(
-		ui_data_storage, 
+		ui_data_storage,
 		UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil, freelist_create(^UIData)},
 	)*/
 
@@ -147,6 +152,10 @@ main :: proc() {
 
 		wait_for_input(window, input)
 
+		if was_pressed(input, .F1) {
+			open_and_create_panel(layout, ui, opened_files, "build.bat")
+		}
+
 		//
 		// SECTION UI
 		//
@@ -155,23 +164,16 @@ main :: proc() {
 		ui.total_dim = renderer.pixels_dim
 		ui_begin(ui)
 
-		build_panel_contents :: proc(window: ^Window, ui: ^UI, panel: ^PanelContents, opened_files: ^Linkedlist(OpenedFile)) {
-			switch panel_val in panel {
-			case Multipanel: build_multipanel(window, ui, &panel_val, opened_files)
-			case OpenedFileViewer:
-			case TextEditor: text_area(ui, &opened_files.sentinel.next.entry)
-			case ThemeEditor:
-			}
-		}
-
-		build_multipanel :: proc(window: ^Window, ui: ^UI, multipanel: ^Multipanel, opened_files: ^Linkedlist(OpenedFile)) {
+		build_multipanel :: proc(
+			window: ^Window, layout: ^Layout, ui: ^UI,
+			multipanel: ^Multipanel, opened_files: ^Linkedlist(OpenedFile),
+		) {
 			button_height := get_button_dim(ui, "T").y
 
 			begin_container(ui, .Top, button_height)
-			panel_entries := &multipanel.panel_entries
-			for panel_entry := panel_entries.sentinel.next; 
-				!linkedlist_entry_is_sentinel(panel_entries, panel_entry);
-				panel_entry = panel_entry.next {
+			panel_refs := &multipanel.panel_refs
+			for panel_entry := panel_refs.sentinel.next;
+				!linkedlist_entry_is_sentinel(panel_refs, panel_entry); {
 
 				panel := &panel_entry.entry.entry
 
@@ -184,17 +186,34 @@ main :: proc() {
 					multipanel.active = panel
 					window.skip_hang_once = true
 				}
+
+				if button(ui = ui, label_str = "x") == .Clicked {
+					panel_entry = detach_panel(layout, multipanel, panel_entry)
+					window.skip_hang_once = true
+				} else {
+					panel_entry = panel_entry.next
+				}
 			}
 			end_container(ui)
 
 			if multipanel.active != nil {
-				build_panel_contents(window, ui, &multipanel.active.contents, opened_files)
+				switch panel_val in &multipanel.active.contents {
+				case Multipanel: build_multipanel(window, layout, ui, &panel_val, opened_files)
+				case OpenedFileViewer:
+				case TextEditor: text_area(ui, panel_val.opened_file)
+				case ThemeEditor:
+				}
 			}
 		}
 
 		begin_container(ui, .Top, ui.total_dim.y / 2)
-		build_multipanel(window, ui, &layout.root, &opened_files.used)
+		build_multipanel(window, layout, ui, &layout.root, &opened_files.used)
 		end_container(ui)
+
+		linked_list_vis(ui, "panels_used", &layout.panels.used)
+		linked_list_vis(ui, "panels_free", &layout.panels.free)
+		linked_list_vis(ui, "root.panel_refs", &layout.root.panel_refs)
+		linked_list_vis(ui, "panel_refs_free", &layout.panel_refs_free)
 
 		/*
 		for layout_entry := layout.sentinel.next; layout_entry != &layout.sentinel; layout_entry = layout_entry.next {

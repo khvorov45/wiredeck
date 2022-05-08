@@ -8,7 +8,7 @@ Layout :: struct {
 }
 
 Multipanel :: struct {
-	panel_entries: Linkedlist(PanelRef),
+	panel_refs: Linkedlist(PanelRef),
 	active: ^Panel,
 }
 
@@ -30,14 +30,16 @@ PanelContents :: union {
 
 OpenedFileViewer :: struct {}
 
-TextEditor :: struct {}
+TextEditor :: struct {
+	opened_file: ^OpenedFile,
+}
 
 ThemeEditor :: struct {}
 
 init_layout :: proc(layout: ^Layout, allocator := context.allocator) {
 	layout^ = {}
 	layout.allocator = allocator
-	linkedlist_init(&layout.root.panel_entries, new(LinkedlistEntry(PanelRef), allocator))
+	linkedlist_init(&layout.root.panel_refs, new(LinkedlistEntry(PanelRef), allocator))
 	freelist_init(&layout.panels, allocator)
 	linkedlist_init(&layout.panel_refs_free, new(LinkedlistEntry(PanelRef), allocator))
 }
@@ -57,16 +59,43 @@ add_panel :: proc(layout: ^Layout, name: string, contents: PanelContents) -> ^Li
 	return panel
 }
 
+remove_panel :: proc(layout: ^Layout, panel_in_list: ^LinkedlistEntry(Panel)) {
+	assert(panel_in_list.entry.ref_count == 0)
+	freelist_remove(&layout.panels, panel_in_list)
+}
+
 attach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^LinkedlistEntry(Panel)) -> ^Panel {
 
 	panel.entry.ref_count += 1
 
 	panel_ref := linkedlist_remove_last_or_new(&layout.panel_refs_free, panel, layout.allocator)
-	linkedlist_append(&multipanel.panel_entries, panel_ref)
+	linkedlist_append(&multipanel.panel_refs, panel_ref)
 
 	if multipanel.active == nil {
 		multipanel.active = &panel.entry
 	}
 
 	return &panel.entry
+}
+
+detach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^LinkedlistEntry(PanelRef)) -> ^LinkedlistEntry(PanelRef) {
+	next_ref := panel.next
+	panel.entry.entry.ref_count -= 1
+
+	if ptr_eq(multipanel.active, &panel.entry.entry) {
+		multipanel.active = &next_ref.entry.entry
+	}
+
+	if panel.entry.entry.ref_count == 0 {
+		remove_panel(layout, panel.entry)
+	}
+	linkedlist_remove_clear_append(panel, &layout.panel_refs_free)
+
+	if linkedlist_is_empty(&multipanel.panel_refs) {
+		multipanel.active = nil
+	} else if ptr_eq(&multipanel.panel_refs.sentinel.entry.entry, multipanel.active) {
+		multipanel.active = &multipanel.panel_refs.sentinel.prev.entry.entry
+	}
+
+	return next_ref
 }

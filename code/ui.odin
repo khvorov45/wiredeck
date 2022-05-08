@@ -813,6 +813,26 @@ color_picker :: proc(
 	}
 }
 
+linked_list_vis :: proc(ui: ^UI, name: string, list: ^Linkedlist($EntryType)) {
+	full_rect, visible_rect := _take_element_from_last_container(ui, [2]int{100, 50}, .Vertical)
+
+	entry_dim := [2]int{20, 20}
+	cur_entry_rect := Rect2i{full_rect.topleft, entry_dim}
+	cur_entry_rect.topleft.y += full_rect.dim.y / 2 - cur_entry_rect.dim.y / 2
+
+	label_rect := cur_entry_rect
+	label_rect.dim = [2]int{full_rect.dim.x, 20}
+	label_rect.topleft.y -= label_rect.dim.y
+	_cmd_textline(ui = ui, full = label_rect, visible = visible_rect, label_str = name, text_align = .Begin)
+
+	_cmd_rect(ui, clip_rect_to_rect(cur_entry_rect, visible_rect), [4]f32{1, 0, 0, 1})
+
+	for entry := list.sentinel.next; !linkedlist_entry_is_sentinel(list, entry); entry = entry.next {
+		cur_entry_rect.topleft.x += entry_dim.x + 10
+		_cmd_rect(ui, clip_rect_to_rect(cur_entry_rect, visible_rect), [4]f32{1, 1, 0, 1})
+	}
+}
+
 fill_container :: proc(ui: ^UI, color: [4]f32) {
 	rect := last_container(ui).visible
 	_cmd_rect(ui, rect, color)
