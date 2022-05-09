@@ -7,20 +7,6 @@ println :: fmt.println
 printf :: fmt.printf
 tprintf :: fmt.tprintf
 
-State :: struct {
-	opened_files: [dynamic]OpenedFile,
-	editing: Maybe(int),
-	sidebar_width: int,
-	sidebar_drag: Maybe(DragRef),
-	theme_editor_open: bool,
-	color_pickers: [ColorID]ColorPickerState,
-	text_color_pickers: [TextColorID]ColorPickerState,
-	theme_editor_scroll_ref: Maybe(f32),
-	theme_editor_offset: int,
-	theme_editor_width: int,
-	theme_editor_drag: Maybe(DragRef),
-}
-
 ColorPickerState :: struct {
 	open: bool,
 	hue, sat: f32,
@@ -43,13 +29,19 @@ OpenedFile :: struct {
 
 main :: proc() {
 
+	context.allocator = panic_allocator()
+
 	global_arena: StaticArena
 	assert(static_arena_init(&global_arena, 1 * GIGABYTE) == .None)
-	context.allocator = static_arena_allocator(&global_arena)
+	global_arena_allocator := static_arena_allocator(&global_arena)
 
 	global_scratch: ScratchBuffer
-	assert(scratch_buffer_init(&global_scratch, 10 * MEGABYTE) == .None)
+	assert(scratch_buffer_init(&global_scratch, 10 * MEGABYTE, global_arena_allocator) == .None)
 	context.temp_allocator = scratch_allocator(&global_scratch)
+
+	global_pool: MemoryPool
+	assert(memory_pool_init(&global_pool, 500 * MEGABYTE, global_arena_allocator) == .None)
+	global_pool_allocator := pool_allocator(&global_pool)
 
 	window_: Window
 	window := &window_
@@ -57,92 +49,31 @@ main :: proc() {
 
 	renderer_: Renderer
 	renderer := &renderer_
-	init_renderer(renderer, 7680, 4320)
+	init_renderer(renderer, 7680, 4320, global_arena_allocator)
 
 	input_: Input
 	input := &input_
 	input.cursor_pos = -1
 
 	monospace_font: Font
-	init_font(&monospace_font, "fonts/LiberationMono-Regular.ttf")
+	init_font(&monospace_font, "fonts/LiberationMono-Regular.ttf", global_arena_allocator, global_pool_allocator)
 	varwidth_font: Font
-	init_font(&varwidth_font, "fonts/LiberationSans-Regular.ttf")
+	init_font(&varwidth_font, "fonts/LiberationSans-Regular.ttf", global_arena_allocator, global_pool_allocator)
 
 	ui_: UI
 	ui := &ui_
-	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font)
+	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font, global_arena_allocator)
 
 	layout_: Layout
 	layout := &layout_
-	init_layout(layout)
+	init_layout(layout, global_arena_allocator, global_pool_allocator)
 
 	opened_files_: Freelist(OpenedFile)
 	opened_files := &opened_files_
-	freelist_init(opened_files)
+	freelist_init(opened_files, global_pool_allocator)
 
-	open_and_create_panel :: proc(layout: ^Layout, ui: ^UI, opened_files: ^Freelist(OpenedFile), name: string) {
-		if file, success := open_file(name, ui.theme.text_colors); success {
-			file_in_list := freelist_append(opened_files, file)
-			attach_panel(layout, &layout.root, add_panel(layout, name, TextEditor{&file_in_list.entry}))
-		}
-	}
-
-	open_and_create_panel(layout, ui, opened_files, "build.bat")
-	open_and_create_panel(layout, ui, opened_files, "shell.bat")
-	open_and_create_panel(layout, ui, opened_files, "sdlbug.c")
-
-	/*ui_data_storage_ := freelist_create(UIData)
-	ui_data_storage := &ui_data_storage_
-
-	ui_data_add_container :: proc(storage: ^Freelist(UIData), data: UIDataContainerBegin) -> ^UIDataContainerBegin {
-		entry := freelist_append(storage, data)
-		entry_data := &entry.entry.(UIDataContainerBegin)
-		return entry_data
-	}
-
-	ui_root := ui_data_add_container(
-		ui_data_storage,
-		UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil, freelist_create(^UIData)},
-	)*/
-
-	/*
-	layout_: Freelist(UIData)
-	layout := &layout_
-	freelist_init(layout)
-	first_container := freelist_append(layout, UIDataContainerBegin{.Left, ContainerResize{100, nil}, {}, nil, freelist_create(^UIData)})
-	file_viewer := freelist_append(layout, UIDataOpenedFileViewer{opened_files})
-
-	first_container_data := &first_container.entry.(UIDataContainerBegin)
-	freelist_append(first_container_data.contents)
-
-	first_container_contents := freelist_create(^UIData)
-
-	data_opened_file_viewer: UIData = UIDataOpenedFileViewer{opened_files}
-	freelist_append(&first_container_contents, &data_opened_file_viewer)
-
-	freelist_append(layout, UIDataOpenedFileViewer{opened_files})
-	freelist_append(layout, UIDataContainerEnd{})
-	freelist_append(layout, UIDataTextArea{&opened_files.sentinel.next.entry})
-	*/
-
-	/*
-	state_: State
-	state := &state_
-	state.opened_files = buffer_from_slice(make([]OpenedFile, 2048))
-	open_file(state, "code/input.odin", ui.theme.text_colors)
-	open_file(state, "tests/highlight-c.c", ui.theme.text_colors)
-	state.editing = 1
-	state.sidebar_width = window.dim.x / 3
-
-	for color_id in ColorID {
-		state.color_pickers[color_id].hue, _, _ =
-			rgb_to_hsv(ui.theme.colors[color_id].rgb, state.color_pickers[color_id].hue, state.color_pickers[color_id].sat)
-	}
-
-	state.theme_editor_width = window.dim.x / 2
-	state.theme_editor_open = true
-	state.text_color_pickers[.FilepathSeparator].open = true
-	*/
+	attach_panel(layout, &layout.root, add_panel(layout, "FileContentViewer", FileContentViewer{}))
+	layout_edit_mode_active := false
 
 	for window.is_running {
 
@@ -153,7 +84,7 @@ main :: proc() {
 		wait_for_input(window, input)
 
 		if was_pressed(input, .F1) {
-			open_and_create_panel(layout, ui, opened_files, "build.bat")
+			layout_edit_mode_active = !layout_edit_mode_active
 		}
 
 		//
@@ -164,168 +95,11 @@ main :: proc() {
 		ui.total_dim = renderer.pixels_dim
 		ui_begin(ui)
 
-		build_multipanel :: proc(
-			window: ^Window, layout: ^Layout, ui: ^UI,
-			multipanel: ^Multipanel, opened_files: ^Linkedlist(OpenedFile),
-		) {
-			button_height := get_button_dim(ui, "T").y
-
-			begin_container(ui, .Top, button_height)
-			panel_refs := &multipanel.panel_refs
-			for panel_entry := panel_refs.sentinel.next;
-				!linkedlist_entry_is_sentinel(panel_refs, panel_entry); {
-
-				panel := &panel_entry.entry.entry
-
-				button_state := button(
-					ui = ui,
-					label_str = panel.name,
-					active = ptr_eq(multipanel.active, panel),
-				)
-
-				next_panel_entry := panel_entry.next
-				skip_hang_once := true
-				#partial switch button_state {
-				case .Clicked:
-					multipanel.active = panel
-				case .ClickedMiddle:
-					next_panel_entry = detach_panel(layout, multipanel, panel_entry)
-				case:
-					skip_hang_once = false
-				}
-
-				window.skip_hang_once ||= skip_hang_once
-				panel_entry = next_panel_entry
-			}
-			end_container(ui)
-
-			if multipanel.active != nil {
-				switch panel_val in &multipanel.active.contents {
-				case Multipanel: build_multipanel(window, layout, ui, &panel_val, opened_files)
-				case OpenedFileViewer:
-				case TextEditor: text_area(ui, panel_val.opened_file)
-				case ThemeEditor:
-				}
-			}
+		if layout_edit_mode_active {
+			build_edit_mode(window, layout, ui)
+		} else {
+			build_contents(window, layout, ui, opened_files)
 		}
-
-		begin_container(ui, .Top, ui.total_dim.y / 2)
-		build_multipanel(window, layout, ui, &layout.root, &opened_files.used)
-		end_container(ui)
-
-		linked_list_vis(ui, "panels_used", &layout.panels.used)
-		linked_list_vis(ui, "panels_free", &layout.panels.free)
-		linked_list_vis(ui, "root.panel_refs", &layout.root.panel_refs)
-		linked_list_vis(ui, "panel_refs_free", &layout.panel_refs_free)
-
-		/*
-		for layout_entry := layout.sentinel.next; layout_entry != &layout.sentinel; layout_entry = layout_entry.next {
-			switch args_val in &layout_entry.entry {
-			case UIDataContainerBegin:
-				container_begin(ui, &args_val)
-			case UIDataContainerEnd:
-				container_end(ui)
-			case UIDataTextArea:
-				text_area(ui, &args_val)
-			case UIDataOpenedFileViewer:
-				//clicked := opened_file_viewer(ui, &args_val)
-				//add_clicked_to_last_active_container(clicked)
-			}
-		}
-		*/
-
-		/*
-
-		// NOTE(khvorov) Theme editor
-		if was_pressed(input, .F11) {
-			state.theme_editor_open = !state.theme_editor_open
-		}
-		if state.theme_editor_open {
-			one_color_height := get_button_dim(ui, "").y
-
-			color_picker_height := 200
-			open_color_piker_count := 0
-			for color in ColorID {
-				if state.color_pickers[color].open {
-					open_color_piker_count += 1
-				}
-			}
-			for color in TextColorID {
-				if state.text_color_pickers[color].open {
-					open_color_piker_count += 1
-				}
-			}
-
-			/*begin_container(ui, .Top, 100)
-			end_container(ui)
-			begin_container(ui, .Bottom, 100)
-			end_container(ui)*/
-
-			theme_editor_height := one_color_height * len(ColorID) + open_color_piker_count * color_picker_height
-
-			begin_container(
-				ui, .Right, ContainerResize{&state.theme_editor_width, &state.theme_editor_drag}, {.Left},
-				ContainerScroll{
-					theme_editor_height,
-					&state.theme_editor_offset,
-					&state.theme_editor_scroll_ref,
-				},
-			)
-
-			for color_id in ColorID {
-				collapsible_color_picker(
-					ui, window,
-					tprintf("%v", color_id), &state.color_pickers[color_id],
-					&ui.theme.colors[color_id], color_picker_height,
-				)
-			}
-
-			for color_id in TextColorID {
-				old_col := ui.theme.text_colors[color_id]
-				collapsible_color_picker(
-					ui, window,
-					tprintf("Text%v", color_id), &state.text_color_pickers[color_id],
-					&ui.theme.text_colors[color_id], color_picker_height,
-				)
-
-				if ui.theme.text_colors[color_id] != old_col {
-					for opened_file in &state.opened_files {
-						using opened_file
-						highlight(fullpath, content, &colors, ui.theme.text_colors)
-						highlight_filepath(fullpath, &fullpath_col, ui.theme.text_colors)
-					}
-				}
-			}
-
-			end_container(ui)
-		}
-
-		// NOTE(khvorov) Sidebar
-		{
-			begin_container(ui, .Left, ContainerResize{&state.sidebar_width, &state.sidebar_drag})
-			ui.current_layout = .Vertical
-
-			for opened_file, index in state.opened_files {
-				button_state := button(
-					ui = ui,
-					label_str = opened_file.fullpath,
-					label_col = opened_file.fullpath_col,
-					text_align = .End,
-				)
-				if button_state == .Clicked {
-					state.editing = index
-				}
-			}
-
-			end_container(ui)
-		}
-
-		// NOTE(khvorov) Editors
-		if editing, ok := state.editing.(int); ok {
-			file := state.opened_files[editing]
-			text_area(ui, &state.opened_files[editing])
-		}
-		*/
 
 		if ui.should_capture_mouse {
 			set_mouse_capture(window, true)
@@ -354,10 +128,11 @@ main :: proc() {
 	}
 }
 
-open_file :: proc(filepath: string, text_cols: [TextColorID][4]f32) -> (opened_file: OpenedFile, success: bool) {
+open_file :: proc(
+	filepath: string, text_cols: [TextColorID][4]f32, allocator: Allocator,
+) -> (opened_file: Maybe(OpenedFile)) {
 
-	file_contents: []u8
-	if file_contents, success = read_entire_file(filepath); success {
+	if file_contents, success := read_entire_file(filepath, allocator).([]u8); success {
 
 		// NOTE(khvorov) Count lines and column widths
 		str := string(file_contents)
@@ -391,7 +166,7 @@ open_file :: proc(filepath: string, text_cols: [TextColorID][4]f32) -> (opened_f
 		colors := make([][4]f32, len(str))
 		highlight(filepath, str, &colors, text_cols)
 
-		fullpath := get_full_filepath(filepath)
+		fullpath := get_full_filepath(filepath, allocator)
 		fullpath_col := make([][4]f32, len(fullpath))
 		highlight_filepath(fullpath, &fullpath_col, text_cols)
 
@@ -410,7 +185,7 @@ open_file :: proc(filepath: string, text_cols: [TextColorID][4]f32) -> (opened_f
 		}
 	}
 
-	return opened_file, success
+	return opened_file
 }
 
 /*

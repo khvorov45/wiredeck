@@ -96,7 +96,7 @@ linkedlist_remove_clear_append :: proc(entry: ^LinkedlistEntry($EntryType), dest
 	linkedlist_append(dest, entry)
 }
 
-freelist_init :: proc(list: ^Freelist($EntryType), allocator := context.allocator) {
+freelist_init :: proc(list: ^Freelist($EntryType), allocator: Allocator) {
 	list^ = {}
 	list.allocator = allocator
 	linkedlist_init(&list.used, new(LinkedlistEntry(EntryType), allocator))

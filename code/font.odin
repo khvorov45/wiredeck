@@ -20,22 +20,21 @@ GlyphInfo :: struct {
 	advance_x: int,
 }
 
-init_font :: proc(font: ^Font, filepath: string) {
+init_font :: proc(font: ^Font, filepath: string, font_allocator, file_allocator: Allocator) {
 
 	firstchar: rune = ' '
 	char_count := int('~') - int(firstchar) + 1
 
 	font^ = Font{
 		px_height_font = 14,
-		alphamap_glyphs = make([]GlyphInfo, char_count),
+		alphamap_glyphs = make([]GlyphInfo, char_count, font_allocator),
 		firstchar = firstchar,
 	}
 
 	ft_lib: ft.Library
 	assert(ft.Init_FreeType(&ft_lib) == ft.Err_Ok)
 
-	file_data, read_ok := read_entire_file(filepath)
-	assert(read_ok, fmt.tprintf("failed to read font at %s", filepath))
+	file_data := read_entire_file(filepath, file_allocator).([]u8)
 
 	ft_face: ft.Face
 	assert(ft.New_Memory_Face(ft_lib, raw_data(file_data), ft.Long(len(file_data)), 0, &ft_face) == ft.Err_Ok)
@@ -58,7 +57,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 		req_alphamap_size += int(bm.width * bm.rows)
 	}
 
-	font.alphamap = make([]u8, req_alphamap_size)
+	font.alphamap = make([]u8, req_alphamap_size, font_allocator)
 
 	alphamap_offset := 0
 	for ch_index in 0..<char_count {
@@ -84,6 +83,7 @@ init_font :: proc(font: ^Font, filepath: string) {
 	}
 
 	ft.Done_FreeType(ft_lib)
+	delete(file_data, file_allocator)
 }
 
 get_glyph_index :: proc(font: ^Font, glyph: u8) -> int {

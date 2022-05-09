@@ -3,16 +3,16 @@ package wiredeck
 import "core:strings"
 import win "windows"
 
-get_full_filepath :: proc(path: string) -> (result: string) {
+get_full_filepath :: proc(path: string, allocator: Allocator) -> (result: string) {
 	path_cstring := strings.clone_to_cstring(path, context.temp_allocator)
 	path_size := win.GetFullPathNameA(path_cstring, 0, nil, nil)
-	buffer := make([]u8, path_size)
+	buffer := make([]u8, path_size, allocator)
 	win.GetFullPathNameA(path_cstring, path_size, cstring(raw_data(buffer)), nil)
 	result = string(buffer[:len(buffer) - 1]) // NOTE(khvorov) Ingore the null terminator
 	return result
 }
 
-read_entire_file :: proc(path: string) -> (contents: []u8, success: bool) {
+read_entire_file :: proc(path: string, allocator: Allocator) -> (contents: Maybe([]u8)) {
 
 	path_cstring := strings.clone_to_cstring(path, context.temp_allocator)
 	handle := win.CreateFileA(
@@ -21,11 +21,15 @@ read_entire_file :: proc(path: string) -> (contents: []u8, success: bool) {
 	)
 
 	file_size := win.GetFileSize(handle, nil)
-	contents = make([]u8, file_size)
+	contents = make([]u8, file_size, allocator)
 
 	bytes_read: win.DWORD
-	win.ReadFile(handle, raw_data(contents), file_size, &bytes_read, nil)
-	success = int(bytes_read) == len(contents)
+	win.ReadFile(handle, raw_data(contents.([]u8)), file_size, &bytes_read, nil)
+	
+	if int(bytes_read) != len(contents.([]u8)) {
+		delete(contents.([]u8))
+		contents = nil
+	}
 
-	return contents, success
+	return contents
 }

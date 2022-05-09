@@ -25,9 +25,9 @@ Color4point :: struct {
 	bottomright: [4]f32,
 }
 
-init_renderer :: proc(renderer: ^Renderer, max_width, max_height: int) {
+init_renderer :: proc(renderer: ^Renderer, max_width, max_height: int, allocator: Allocator) {
 	renderer^ = Renderer {
-		pixel_storage = make([]u32, max_width * max_height),
+		pixel_storage = make([]u32, max_width * max_height, allocator),
 	}
 }
 

@@ -40,10 +40,17 @@ ArenaTemp :: struct {
 	used: int,
 }
 
+MemoryPool :: struct {
+	data: []byte,
+	used: int,
+}
+
 BYTE :: 1
 KILOBYTE :: 1024 * BYTE
 MEGABYTE :: 1024 * KILOBYTE
 GIGABYTE :: 1024 * MEGABYTE
+
+panic_allocator :: mem.panic_allocator
 
 get_aligned_byte_slice :: proc(ptr: rawptr, size, align: int) -> (data: []u8, size_aligned: int) {
 	assert(align > 0)
@@ -60,16 +67,15 @@ get_aligned_byte_slice :: proc(ptr: rawptr, size, align: int) -> (data: []u8, si
 	return data, size_aligned
 }
 
-buffer_from_slice :: proc "contextless" (backing: $T/[]$E) -> [dynamic]E {
-	return transmute([dynamic]E)mem.Raw_Dynamic_Array{
-		data      = raw_data(backing),
-		len       = 0,
-		cap       = len(backing),
-		allocator =  Allocator{
-			procedure = mem.panic_allocator_proc,
-			data = nil,
-		},
+buffer_from_slice :: proc(backing: $T/[]$E) -> [dynamic]E {
+	raw := mem.Raw_Dynamic_Array{
+		data = raw_data(backing),
+		len = 0,
+		cap = len(backing),
+		allocator = panic_allocator(),
 	}
+	result := transmute([dynamic]E)raw
+	return result
 }
 
 ptr_eq :: proc(p1, p2: rawptr) -> bool {
@@ -174,16 +180,14 @@ static_arena_assert_no_temp :: proc(arena: ^StaticArena, loc := #caller_location
 // SECTION Scratch
 //
 
-scratch_buffer_init :: proc(
-	buf: ^ScratchBuffer, size: int, allocator := context.allocator,
-) -> (err: AllocatorError) {
+scratch_buffer_init :: proc(buf: ^ScratchBuffer, size: int, allocator: Allocator) -> (err: AllocatorError) {
 	buf^ = {}
 	buf.data, err = mem.make_aligned([]byte, size, 2 * align_of(rawptr), allocator)
 	return err
 }
 
 scratch_allocator :: proc(buffer: ^ScratchBuffer) -> Allocator {
-	result := Allocator{scratch_allocator_proc, buffer,}
+	result := Allocator{scratch_allocator_proc, buffer}
 	return result
 }
 
@@ -313,4 +317,52 @@ end_arena_temp_memory :: proc(temp: ArenaTemp, loc := #caller_location) {
 	assert(temp.arena.temp_count > 0, "double-use of static_arena_temp_end", loc)
 	temp.arena.used = temp.used
 	temp.arena.temp_count -= 1
+}
+
+//
+// SECTION Pool
+//
+
+memory_pool_init :: proc(pool: ^MemoryPool, size: int, allocator: Allocator) -> (err: AllocatorError) {
+	pool^ = {}
+	pool.data, err = mem.make_aligned([]byte, size, 2 * align_of(rawptr), allocator)
+	return err
+}
+
+pool_allocator :: proc(pool: ^MemoryPool) -> Allocator {
+	result := Allocator{pool_allocator_proc, pool}
+	return result
+}
+
+pool_allocator_proc :: proc(
+	allocator_data: rawptr, mode: AllocatorMode,
+	size, align: int,
+    old_memory: rawptr, old_size: int, loc := #caller_location,
+) -> (data: []byte, err: AllocatorError) {
+
+	pool := (^MemoryPool)(allocator_data)
+	assert(pool.data != nil)
+
+	// TODO(khvorov) Actual real pool
+	switch mode {
+	case .Alloc:
+		size_aligned: int
+		data, size_aligned = get_aligned_byte_slice(raw_data(pool.data[pool.used:]), size, align)
+		if pool.used + size_aligned > len(pool.data) {
+			data = nil
+			err = .Out_Of_Memory
+		} else {
+			pool.used += size_aligned
+		}
+
+	case .Free:
+
+	case .Free_All:	
+
+	case .Resize:
+	
+	case .Query_Features, .Query_Info: err = .Mode_Not_Implemented
+	}
+
+	return data, err
 }

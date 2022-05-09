@@ -172,6 +172,7 @@ DragRef :: struct {
 init_ui :: proc(
 	ui: ^UI, width, height: int, input: ^Input,
 	monospace_font: ^Font, varwidth_font: ^Font,
+	allocator: Allocator,
 ) {
 
 	theme: Theme
@@ -209,15 +210,15 @@ init_ui :: proc(
 		monospace_px_width = get_glyph_info(monospace_font, 'a').advance_x,
 		theme = theme,
 		total_dim = [2]int{width, height},
-		container_stack = buffer_from_slice(make([]Container, 100)),
-		commands = buffer_from_slice(make([]UICommand, 1000)),
+		container_stack = buffer_from_slice(make([]Container, 100, allocator)),
+		commands = buffer_from_slice(make([]UICommand, 1000, allocator)),
 		last_element_rect = Rect2i{},
 		floating = nil,
-		floating_cmd = buffer_from_slice(make([]UICommand, 100)),
+		floating_cmd = buffer_from_slice(make([]UICommand, 100, allocator)),
 		current_cmd_buffer = nil,
 	}
 
-	arena_init(&ui.arena, make([]u8, 4 * MEGABYTE))
+	arena_init(&ui.arena, make([]u8, 4 * MEGABYTE, allocator))
 	ui.arena_allocator = arena_allocator(&ui.arena)
 }
 
@@ -457,7 +458,7 @@ end_floating :: proc(ui: ^UI) {
 button :: proc(
 	ui: ^UI,
 	label_str: string,
-	orientation: Orientation = .Horizontal,
+	dir: Direction,
 	label_col: Maybe([][4]f32) = nil,
 	active: bool = false,
 	text_align: Align = .Center,
@@ -465,7 +466,7 @@ button :: proc(
 ) -> MouseState {
 
 	state := MouseState.Normal
-	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), orientation)
+	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), dir)
 
 	if process_input {
 		state = _get_rect_mouse_state(ui.input, visible)
@@ -486,15 +487,16 @@ button :: proc(
 text :: proc(
 	ui: ^UI,
 	label_str: string,
-	orientation: Orientation = .Horizontal,
+	dir: Direction,
 	label_col: Maybe([][4]f32) = nil,
 	text_align: Align = .Center,
 ) {
-	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), orientation)
+	full, visible := _take_element_from_last_container(ui, get_button_dim(ui, label_str), dir)
 	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 }
 
 text_area :: proc(ui: ^UI, file: ^OpenedFile) {
+	assert(file != nil)
 
 	line_count := file.line_count
 
@@ -813,6 +815,11 @@ color_picker :: proc(
 	}
 }
 
+file_selector :: proc(ui: ^UI) -> (selected_file: Maybe(string)) {
+	text(ui, "File selector", .Top)
+	return selected_file
+}
+
 linked_list_vis :: proc(ui: ^UI, name: string, list: ^Linkedlist($EntryType)) {
 	full_rect, visible_rect := _take_element_from_last_container(ui, [2]int{100, 50}, .Vertical)
 
@@ -990,17 +997,14 @@ hsv_to_rgb :: proc(hue, sat, brt: f32) -> [4]f32 {
 	return result
 }
 
-_take_element_from_last_container :: proc(ui: ^UI, dim: [2]int, layout: Orientation) -> (full: Rect2i, visible: Rect2i) {
+_take_element_from_last_container :: proc(ui: ^UI, dim: [2]int, dir: Direction) -> (full: Rect2i, visible: Rect2i) {
 
-	dir: Direction
 	size: int
-	switch layout {
-	case .Horizontal:
-		size = dim.x
-		dir = .Left
-	case .Vertical:
+	switch dir {
+	case .Top, .Bottom:
 		size = dim.y
-		dir = .Top
+	case .Left, .Right:
+		size = dim.x
 	}
 
 	full = _take_rect_from_container(last_container(ui), dir, size)
