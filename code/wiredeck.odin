@@ -40,7 +40,7 @@ main :: proc() {
 	context.temp_allocator = scratch_allocator(&global_scratch)
 
 	global_pool: MemoryPool
-	assert(memory_pool_init(&global_pool, 500 * MEGABYTE, global_arena_allocator) == .None)
+	assert(memory_pool_init(&global_pool, 50 * MEGABYTE, global_arena_allocator) == .None)
 	global_pool_allocator := pool_allocator(&global_pool)
 
 	window_: Window

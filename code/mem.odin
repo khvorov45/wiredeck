@@ -41,8 +41,20 @@ ArenaTemp :: struct {
 }
 
 MemoryPool :: struct {
-	data: []byte,
-	used: int,
+	min_chunk_size: int,
+	first_chunk: ^PoolChunk,
+	chunk_allocator: Allocator,
+}
+
+PoolChunk :: struct {
+	size: int,
+	first_marker: ^PoolMarker,
+	next, prev: ^PoolChunk,
+}
+
+PoolMarker :: struct {
+	free_till_next: bool,
+	next, prev: ^PoolMarker,
 }
 
 BYTE :: 1
@@ -51,6 +63,7 @@ MEGABYTE :: 1024 * KILOBYTE
 GIGABYTE :: 1024 * MEGABYTE
 
 panic_allocator :: mem.panic_allocator
+make_aligned :: mem.make_aligned
 
 get_aligned_byte_slice :: proc(ptr: rawptr, size, align: int) -> (data: []u8, size_aligned: int) {
 	assert(align > 0)
@@ -243,7 +256,7 @@ scratch_allocator_proc :: proc(
 				data = mem.byte_slice(old_memory, size)
 				scratch.curr_offset = int(old_ptr - begin) + size
 			} else {
-				data, err := 
+				data, err :=
 					scratch_allocator_proc(allocator_data, .Alloc, size, align, old_memory, old_size, loc)
 				if err == nil {
 					copy(data, mem.byte_slice(old_memory, old_size))
@@ -323,9 +336,23 @@ end_arena_temp_memory :: proc(temp: ArenaTemp, loc := #caller_location) {
 // SECTION Pool
 //
 
-memory_pool_init :: proc(pool: ^MemoryPool, size: int, allocator: Allocator) -> (err: AllocatorError) {
+memory_pool_init :: proc(pool: ^MemoryPool, min_chunk_size: int, chunk_allocator: Allocator) -> (err: AllocatorError) {
 	pool^ = {}
-	pool.data, err = mem.make_aligned([]byte, size, 2 * align_of(rawptr), allocator)
+	first_chunk_data: []u8
+	first_chunk_data, err =
+		chunk_allocator.procedure(chunk_allocator.data, .Alloc, min_chunk_size, align_of(PoolChunk), nil, 0)
+
+	if err == .None {
+		pool.min_chunk_size = min_chunk_size
+		pool.first_chunk = cast(^PoolChunk)raw_data(first_chunk_data)
+		pool.chunk_allocator = chunk_allocator
+
+		pool.first_chunk^ = {len(first_chunk_data), nil, nil, nil}
+
+		pool.first_chunk.first_marker = cast(^PoolMarker)raw_data(first_chunk_data[size_of(PoolChunk):])
+		pool.first_chunk.first_marker^ = {true, nil, nil}
+	}
+
 	return err
 }
 
@@ -341,26 +368,88 @@ pool_allocator_proc :: proc(
 ) -> (data: []byte, err: AllocatorError) {
 
 	pool := (^MemoryPool)(allocator_data)
-	assert(pool.data != nil)
 
 	// TODO(khvorov) Actual real pool
 	switch mode {
 	case .Alloc:
-		size_aligned: int
-		data, size_aligned = get_aligned_byte_slice(raw_data(pool.data[pool.used:]), size, align)
-		if pool.used + size_aligned > len(pool.data) {
-			data = nil
-			err = .Out_Of_Memory
-		} else {
-			pool.used += size_aligned
+		found := false
+		for chunk := pool.first_chunk; chunk != nil && !found; chunk = chunk.next {
+			for marker := chunk.first_marker; marker != nil && !found; marker = marker.next {
+				if marker.free_till_next {
+
+					next_address: uintptr
+					if marker.next == nil {
+						next_address = uintptr(chunk) + uintptr(chunk.size)
+					} else {
+						next_address = uintptr(rawptr(marker.next))
+					}
+
+					free_start := uintptr(marker) + size_of(PoolMarker)
+					free_bytes := next_address - free_start
+
+					test_data, size_aligned := get_aligned_byte_slice(rawptr(free_start), size, align)
+					if uintptr(size_aligned) <= free_bytes {
+						data = test_data
+						found = true
+						marker.free_till_next = false
+
+						if free_bytes - uintptr(size_aligned) >= size_of(PoolMarker) + 1024 {
+							marker_copy := marker^
+							marker = cast(^PoolMarker)rawptr(uintptr(raw_data(data)) - size_of(PoolMarker))
+							marker^ = marker_copy
+							
+							if marker.prev != nil {
+								marker.prev.next = marker
+							}
+
+							marker.next = cast(^PoolMarker)raw_data(data[len(data):])
+							marker.next.next = marker_copy.next
+							marker.next.prev = marker
+							marker.next.free_till_next = true
+						}
+					}
+				}
+			}
+		}
+
+		if !found {
+			unimplemented("allocate another chunk")
 		}
 
 	case .Free:
+		marker := cast(^PoolMarker)rawptr(uintptr(old_memory) - size_of(PoolMarker))
+		marker.free_till_next = true
 
-	case .Free_All:	
+		for next_marker := marker.next;; {
+			if next_marker == nil {
+				marker.next = nil
+				break
+			} else {
+				if next_marker.free_till_next {
+					next_marker = next_marker.next
+				} else {
+					marker.next = next_marker
+					break
+				}
+			}
+		}
+
+		if marker.prev != nil {
+			for prev_marker := marker.prev; prev_marker.free_till_next; {
+				prev_marker.next = marker.next
+				prev_marker = prev_marker.prev
+			}
+		}
+
+	case .Free_All:
+		for chunk := pool.first_chunk; chunk != nil; chunk = chunk.next {
+			chunk.first_marker.next = nil
+			chunk.first_marker.free_till_next = true
+		}
 
 	case .Resize:
-	
+		unimplemented()
+
 	case .Query_Features, .Query_Info: err = .Mode_Not_Implemented
 	}
 
