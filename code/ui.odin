@@ -821,7 +821,7 @@ file_selector :: proc(ui: ^UI) -> (selected_file: Maybe(string)) {
 }
 
 linked_list_vis :: proc(ui: ^UI, name: string, list: ^Linkedlist($EntryType)) {
-	full_rect, visible_rect := _take_element_from_last_container(ui, [2]int{100, 50}, .Vertical)
+	full_rect, visible_rect := _take_element_from_last_container(ui, [2]int{100, 50}, .Top)
 
 	entry_dim := [2]int{20, 20}
 	cur_entry_rect := Rect2i{full_rect.topleft, entry_dim}
@@ -838,6 +838,48 @@ linked_list_vis :: proc(ui: ^UI, name: string, list: ^Linkedlist($EntryType)) {
 		cur_entry_rect.topleft.x += entry_dim.x + 10
 		_cmd_rect(ui, clip_rect_to_rect(cur_entry_rect, visible_rect), [4]f32{1, 1, 0, 1})
 	}
+}
+
+pool_vis :: proc(ui: ^UI, pool: ^MemoryPool) {
+	full_rect, visible_rect := _take_element_from_last_container(ui, [2]int{100, 50}, .Top)
+
+	bytes_over_pixels := 1024 * 100
+	cur_chunk_rect := Rect2i{full_rect.topleft, [2]int{0, 10}}
+
+	for chunk := pool.first_chunk; chunk != nil; chunk = chunk.next {
+
+		cur_chunk_rect.dim.x = chunk.size / bytes_over_pixels
+		_cmd_rect(ui, clip_rect_to_rect(cur_chunk_rect, visible_rect), [4]f32{0, 1, 0, 1})
+
+		for marker := chunk.first_marker; marker != nil; marker = marker.next {
+
+			marker_rect := cur_chunk_rect
+			marker_rect.dim.x = 2
+
+			bytes_to_marker := int(uintptr(rawptr(marker)) - uintptr(rawptr(chunk)))
+			px_to_marker := bytes_to_marker / bytes_over_pixels
+			marker_rect.topleft.x += px_to_marker
+			_cmd_rect(ui, clip_rect_to_rect(marker_rect, visible_rect), [4]f32{1, 1, 1, 1})
+
+			if !marker.free_till_next {
+				next_pos := uintptr(marker.next)
+				if next_pos == 0 {
+					next_pos = uintptr(rawptr(chunk)) + uintptr(chunk.size)
+				}
+
+				bytes_to_next := int(next_pos - uintptr(rawptr(chunk)))
+				px_to_next := bytes_to_next / bytes_over_pixels
+
+				marker_next_rect := marker_rect
+				marker_next_rect.topleft.x += marker_rect.dim.x
+				marker_next_rect.dim.x = px_to_next - px_to_marker - marker_rect.dim.x
+				_cmd_rect(ui, clip_rect_to_rect(marker_next_rect, visible_rect), [4]f32{1, 0, 0, 1})
+			}
+		}
+
+		cur_chunk_rect.topleft.x += cur_chunk_rect.dim.x + 10
+	}
+
 }
 
 fill_container :: proc(ui: ^UI, color: [4]f32) {

@@ -64,6 +64,7 @@ GIGABYTE :: 1024 * MEGABYTE
 
 panic_allocator :: mem.panic_allocator
 make_aligned :: mem.make_aligned
+alloc :: mem.alloc
 
 get_aligned_byte_slice :: proc(ptr: rawptr, size, align: int) -> (data: []u8, size_aligned: int) {
 	assert(align > 0)
@@ -369,7 +370,6 @@ pool_allocator_proc :: proc(
 
 	pool := (^MemoryPool)(allocator_data)
 
-	// TODO(khvorov) Actual real pool
 	switch mode {
 	case .Alloc:
 		found := false

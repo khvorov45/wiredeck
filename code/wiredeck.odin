@@ -75,6 +75,7 @@ main :: proc() {
 	attach_panel(layout, &layout.root, add_panel(layout, "FileContentViewer", FileContentViewer{}))
 	layout_edit_mode_active := false
 
+	temp: rawptr
 	for window.is_running {
 
 		//
@@ -87,6 +88,15 @@ main :: proc() {
 			layout_edit_mode_active = !layout_edit_mode_active
 		}
 
+		if was_pressed(input, .F4) {
+			if temp == nil {
+				temp = alloc(1024 * 1024 * 10, 1, global_pool_allocator)
+			} else {
+				free(temp, global_pool_allocator)
+				temp = nil
+			}
+		}
+
 		//
 		// SECTION UI
 		//
@@ -95,11 +105,15 @@ main :: proc() {
 		ui.total_dim = renderer.pixels_dim
 		ui_begin(ui)
 
+		begin_container(ui, .Top, ui.total_dim.y / 2)
 		if layout_edit_mode_active {
 			build_edit_mode(window, layout, ui)
 		} else {
 			build_contents(window, layout, ui, opened_files)
 		}
+		end_container(ui)
+
+		pool_vis(ui, &global_pool)
 
 		if ui.should_capture_mouse {
 			set_mouse_capture(window, true)
