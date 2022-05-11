@@ -55,6 +55,8 @@ main :: proc() {
 	input := &input_
 	input.cursor_pos = -1
 
+	get_monospace_font(window)
+
 	monospace_font: Font
 	init_font(&monospace_font, "fonts/LiberationMono-Regular.ttf", global_arena_allocator, global_pool_allocator)
 	varwidth_font: Font
@@ -75,7 +77,6 @@ main :: proc() {
 	attach_panel(layout, &layout.root, add_panel(layout, "FileContentViewer", FileContentViewer{}))
 	layout_edit_mode_active := false
 
-	temp: rawptr
 	for window.is_running {
 
 		//
@@ -86,15 +87,6 @@ main :: proc() {
 
 		if was_pressed(input, .F1) {
 			layout_edit_mode_active = !layout_edit_mode_active
-		}
-
-		if was_pressed(input, .F4) {
-			if temp == nil {
-				temp = alloc(1024 * 1024 * 10, 1, global_pool_allocator)
-			} else {
-				free(temp, global_pool_allocator)
-				temp = nil
-			}
 		}
 
 		//

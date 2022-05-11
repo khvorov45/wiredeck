@@ -78,6 +78,13 @@ foreign win {
 		hTemplateFil: HANDLE,
 	) -> HANDLE ---
 	GetFileSize :: proc(hFile: HANDLE, lpFileSizeHigh: LPDWORD) -> DWORD ---
+	EnumFontFamiliesExA :: proc(
+		hdc: HDC,
+		lpLogfont: LPLOGFONTA,
+		lpProc: FONTENUMPROCA,
+		lParam: LPARAM,
+		dwFlags: DWORD,
+	) -> i32 ---
 }
 
 LOWORD :: #force_inline proc "contextless" (x: DWORD) -> WORD {
@@ -119,6 +126,7 @@ LPARAM :: LONG_PTR
 WPARAM :: UINT_PTR
 ATOM :: WORD
 BYTE :: u8
+CHAR :: u8
 
 POINT :: struct { x, y: LONG }
 LPPOINT :: ^POINT
@@ -191,6 +199,80 @@ SECURITY_ATTRIBUTES :: struct {
 	bInheritHandle: BOOL,
 }
 LPSECURITY_ATTRIBUTES :: ^SECURITY_ATTRIBUTES
+LOGFONTA :: struct {
+	lfHeight: LONG,
+	lfWidth: LONG,
+	lfEscapement: LONG,
+	lfOrientation: LONG,
+	lfWeight: LONG,
+	lfItalic: BYTE,
+	lfUnderline: BYTE,
+	lfStrikeOut: BYTE,
+	lfCharSet: BYTE,
+	lfOutPrecision: BYTE,
+	lfClipPrecision: BYTE,
+	lfQuality: BYTE,
+	lfPitchAndFamily: BYTE,
+	lfFaceName: [LF_FACESIZE]CHAR,
+}
+LPLOGFONTA :: ^LOGFONTA
+FONTENUMPROCA :: #type proc "c" (lpelfe: ^LOGFONTA, lpntme: ^TEXTMETRICA, FontType: DWORD, lParam: LPARAM) -> i32
+TEXTMETRICA :: struct {
+	tmHeight: LONG,
+	tmAscent: LONG,
+	tmDescent: LONG,
+	tmInternalLeading: LONG,
+	tmExternalLeading: LONG,
+	tmAveCharWidth: LONG,
+	tmMaxCharWidth: LONG,
+	tmWeight: LONG,
+	tmOverhang: LONG,
+	tmDigitizedAspectX: LONG,
+	tmDigitizedAspectY: LONG,
+	tmFirstChar: BYTE,
+	tmLastChar: BYTE,
+	tmDefaultChar: BYTE,
+	tmBreakChar: BYTE,
+	tmItalic: BYTE,
+	tmUnderlined: BYTE,
+	tmStruckOut: BYTE,
+	tmPitchAndFamily: BYTE,
+	tmCharSet: BYTE,
+}
+NEWTEXTMETRICEXA :: struct {
+	ntmTm: NEWTEXTMETRICA,
+	ntmFontSig: FONTSIGNATURE,
+}
+NEWTEXTMETRICA :: struct {
+	tmHeight: LONG,
+	tmAscent: LONG,
+	tmDescent: LONG,
+	tmInternalLeading: LONG,
+	tmExternalLeading: LONG,
+	tmAveCharWidth: LONG,
+	tmMaxCharWidth: LONG,
+	tmWeight: LONG,
+	tmOverhang: LONG,
+	tmDigitizedAspectX: LONG,
+	tmDigitizedAspectY: LONG,
+	tmFirstChar: BYTE,
+	tmLastChar: BYTE,
+	tmDefaultChar: BYTE,
+	tmBreakChar: BYTE,
+	tmItalic: BYTE,
+	tmUnderlined: BYTE,
+	tmStruckOut: BYTE,
+	tmPitchAndFamily: BYTE,
+	tmCharSet: BYTE,
+	ntmFlags: DWORD,
+	ntmSizeEM: UINT,
+	ntmCellHeight: UINT,
+	ntmAvgWidth: UINT,
+}
+FONTSIGNATURE :: struct {
+	fsUsb: [4]DWORD,
+	fsCsb: [2]DWORD,
+}
 
 TME_LEAVE :: 0x00000002
 MEM_COMMIT :: 0x00001000
@@ -233,6 +315,22 @@ GENERIC_READ :: 0x80000000
 FILE_SHARE_READ :: 0x00000001
 OPEN_EXISTING :: 3
 FILE_ATTRIBUTE_NORMAL :: 0x00000080
+LF_FACESIZE :: 32
+DEFAULT_PITCH :: 0
+FIXED_PITCH :: 1
+VARIABLE_PITCH :: 2
+RASTER_FONTTYPE :: 0x0001
+DEVICE_FONTTYPE :: 0x0002
+TRUETYPE_FONTTYPE :: 0x0004
+ANSI_CHARSET :: 0
+DEFAULT_CHARSET :: 1
+SYMBOL_CHARSET :: 2
+SHIFTJIS_CHARSET :: 128
+HANGEUL_CHARSET :: 129
+HANGUL_CHARSET :: 129
+GB2312_CHARSET :: 134
+CHINESEBIG5_CHARSET :: 136
+OEM_CHARSET :: 255
 
 _CW_USEDEFAULT := 0x80000000
 CW_USEDEFAULT := i32(_CW_USEDEFAULT)

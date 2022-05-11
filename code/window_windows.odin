@@ -211,6 +211,8 @@ _record_event :: proc(window: ^Window, input: ^Input, event: ^win.MSG) {
 			case win.VK_SPACE: record_key(input, .Space, ended_down)
 			case win.VK_CONTROL: record_key(input, .Ctrl, ended_down)
 			case win.VK_F1: record_key(input, .F1, ended_down)
+			case win.VK_F2: record_key(input, .F2, ended_down)
+			case win.VK_F3: record_key(input, .F3, ended_down)
 			case win.VK_F4: record_key(input, .F4, ended_down)
 			case win.VK_F11: record_key(input, .F11, ended_down)
 			case: window.platform.input_modified = false
