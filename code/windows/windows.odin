@@ -85,6 +85,15 @@ foreign win {
 		lParam: LPARAM,
 		dwFlags: DWORD,
 	) -> i32 ---
+	FormatMessageW :: proc(
+		dwFlags: DWORD,
+		lpSource: LPCVOID,
+		dwMessageId: DWORD,
+		dwLanguageId: DWORD,
+		lpBuffer: ^LPWSTR,
+		nSize: DWORD,
+		Argument: rawptr,
+	) -> DWORD ---
 }
 
 LOWORD :: #force_inline proc "contextless" (x: DWORD) -> WORD {
@@ -98,6 +107,7 @@ HIWORD :: #force_inline proc "contextless" (x: DWORD) -> WORD {
 VOID :: rawptr
 PVOID :: rawptr
 LPVOID :: rawptr
+LPCVOID :: rawptr
 HANDLE :: PVOID
 HWND :: HANDLE
 HINSTANCE :: HANDLE
@@ -108,6 +118,8 @@ HBRUSH :: HANDLE
 HMENU :: HANDLE
 HDC :: HANDLE
 HMONITOR :: HANDLE
+WCHAR :: u16
+LPWSTR :: [^]WCHAR
 
 BOOL :: i32
 LONG :: i32
@@ -331,6 +343,9 @@ HANGUL_CHARSET :: 129
 GB2312_CHARSET :: 134
 CHINESEBIG5_CHARSET :: 136
 OEM_CHARSET :: 255
+FORMAT_MESSAGE_ALLOCATE_BUFFER :: 0x00000100
+FORMAT_MESSAGE_FROM_SYSTEM :: 0x00001000
+FORMAT_MESSAGE_IGNORE_INSERTS :: 0x00000200
 
 _CW_USEDEFAULT := 0x80000000
 CW_USEDEFAULT := i32(_CW_USEDEFAULT)
@@ -344,3 +359,6 @@ IDC_ARROW := cstring(_IDC_ARROW)
 IDC_SIZENS := cstring(_IDC_SIZENS)
 IDC_SIZEWE := cstring(_IDC_SIZEWE)
 IDC_HAND := cstring(_IDC_HAND)
+
+INVALID_HANDLE :: HANDLE(~uintptr(0))
+INVALID_HANDLE_VALUE :: INVALID_HANDLE

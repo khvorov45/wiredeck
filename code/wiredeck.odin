@@ -55,12 +55,10 @@ main :: proc() {
 	input := &input_
 	input.cursor_pos = -1
 
-	get_monospace_font(window)
-
 	monospace_font: Font
-	init_font(&monospace_font, "fonts/LiberationMono-Regular.ttf", global_arena_allocator, global_pool_allocator)
+	init_font(&monospace_font, get_font_ttf_path(.Monospace), global_arena_allocator, global_pool_allocator)
 	varwidth_font: Font
-	init_font(&varwidth_font, "fonts/LiberationSans-Regular.ttf", global_arena_allocator, global_pool_allocator)
+	init_font(&varwidth_font, get_font_ttf_path(.Varwidth), global_arena_allocator, global_pool_allocator)
 
 	ui_: UI
 	ui := &ui_
