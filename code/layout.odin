@@ -10,7 +10,7 @@ Layout :: struct {
 Multipanel :: struct {
 	panel_refs: Linkedlist(PanelRef),
 	panel_count: int,
-	active: ^Panel,
+	active: ^LinkedlistEntry(PanelRef),
 	mode: MultipanelMode,
 }
 
@@ -51,18 +51,10 @@ FilesystemEntry :: struct {
 init_layout :: proc(layout: ^Layout, freelist_allocator: Allocator) {
 	layout^ = {}
 	layout.freelist_allocator = freelist_allocator
-	linkedlist_init(&layout.root.panel_refs, new(LinkedlistEntry(PanelRef), freelist_allocator))
 	freelist_init(&layout.panels, freelist_allocator)
-	linkedlist_init(&layout.panel_refs_free, new(LinkedlistEntry(PanelRef), freelist_allocator))
 }
 
-layout_is_empty :: proc(layout: ^Layout) -> bool {
-	result := linkedlist_is_empty(&layout.root.panel_refs)
-	return result
-}
-
-add_panel :: proc(layout: ^Layout, name: string, $ContentsType: typeid) -> ^LinkedlistEntry(Panel) {
-	#assert(ContentsType == Multipanel || ContentsType == FileContentViewer)
+add_panel :: proc(layout: ^Layout, name: string, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
 
 	panel := freelist_append(&layout.panels, Panel{})
 
@@ -71,14 +63,7 @@ add_panel :: proc(layout: ^Layout, name: string, $ContentsType: typeid) -> ^Link
 		panel.entry.name_chars[index] = name[index]
 	}
 	panel.entry.name = string(panel.entry.name_chars[:name_len])
-
-	when ContentsType == Multipanel {
-		contents := Multipanel{}
-		linkedlist_init(&contents.panel_refs, new(LinkedlistEntry(PanelRef), layout.freelist_allocator))
-		panel.entry.contents = contents
-	} else when ContentsType == FileContentViewer {
-		panel.entry.contents = FileContentViewer{}
-	}
+	panel.entry.contents = contents
 
 	panel.entry.ref_count = 0
 	return panel
@@ -110,7 +95,7 @@ attach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 	linkedlist_append(&multipanel.panel_refs, panel_ref)
 
 	if multipanel.active == nil {
-		multipanel.active = &panel.entry
+		multipanel.active = panel_ref
 	}
 
 	return panel_ref
@@ -124,20 +109,20 @@ detach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 	assert(panel.entry.panel_in_list.entry.ref_count > 0)
 	panel.entry.panel_in_list.entry.ref_count -= 1
 
-	if ptr_eq(multipanel.active, &panel.entry.panel_in_list.entry) {
-		multipanel.active = &next_ref.entry.panel_in_list.entry
+	if ptr_eq(multipanel.active, panel) {
+		if ptr_eq(panel.next, panel) {
+			multipanel.active = nil
+		} else if ptr_eq(panel.next, multipanel.panel_refs.first) {
+			multipanel.active = panel.prev
+		} else {
+			multipanel.active = panel.next
+		}
 	}
 
 	if panel.entry.panel_in_list.entry.ref_count == 0 {
 		remove_panel(layout, panel.entry.panel_in_list)
 	}
-	linkedlist_remove_clear_append(panel, &layout.panel_refs_free)
-
-	if linkedlist_is_empty(&multipanel.panel_refs) {
-		multipanel.active = nil
-	} else if ptr_eq(&multipanel.panel_refs.sentinel.entry.panel_in_list.entry, multipanel.active) {
-		multipanel.active = &multipanel.panel_refs.sentinel.prev.entry.panel_in_list.entry
-	}
+	linkedlist_remove_clear_append(&multipanel.panel_refs, panel, &layout.panel_refs_free)
 
 	return next_ref
 }
@@ -160,8 +145,7 @@ build_multipanel :: proc(
 
 		begin_container(ui, .Top, button_height)
 		panel_refs := &multipanel.panel_refs
-		for panel_entry := panel_refs.sentinel.next;
-			!linkedlist_entry_is_sentinel(panel_refs, panel_entry); {
+			for panel_entry := panel_refs.first; panel_entry != nil; {
 
 			panel := &panel_entry.entry.panel_in_list.entry
 
@@ -169,14 +153,14 @@ build_multipanel :: proc(
 				ui = ui,
 				label_str = panel.name,
 				dir = .Left,
-				active = ptr_eq(multipanel.active, panel),
+				active = ptr_eq(multipanel.active, panel_entry),
 			)
 
 			next_panel_entry := panel_entry.next
 			skip_hang_once := true
 			#partial switch button_state {
 			case .Clicked:
-				multipanel.active = panel
+				multipanel.active = panel_entry
 			case .ClickedMiddle:
 				next_panel_entry = detach_panel(layout, multipanel, panel_entry)
 			case:
@@ -193,12 +177,12 @@ build_multipanel :: proc(
 
 	case .Tab:
 		if multipanel.active != nil {
-			build_panel(window, layout, ui, opened_files, multipanel.active)
+			build_panel(window, layout, ui, opened_files, &multipanel.active.entry.panel_in_list.entry)
 		}
 
 	case .Split:
-		for panel_ref_in_list := multipanel.panel_refs.sentinel.next;
-			!linkedlist_entry_is_sentinel(&multipanel.panel_refs, panel_ref_in_list);
+		for panel_ref_in_list := multipanel.panel_refs.first;
+			panel_ref_in_list != nil;
 			panel_ref_in_list = panel_ref_in_list.next {
 
 			panel_ref := &panel_ref_in_list.entry
@@ -233,10 +217,7 @@ build_panel :: proc(
 
 build_multipanel_edit :: proc(window: ^Window, layout: ^Layout, ui: ^UI, multipanel: ^Multipanel) {
 
-	for panel_ref := multipanel.panel_refs.sentinel.next;
-		!linkedlist_entry_is_sentinel(&multipanel.panel_refs, panel_ref);
-		panel_ref = panel_ref.next {
-
+	for panel_ref := multipanel.panel_refs.first; panel_ref != nil; panel_ref = panel_ref.next {
 		add_multipanel_button_state := button(ui = ui, label_str = "Multipanel", dir = .Top)
 		add_file_content_viewer_button_state := button(ui = ui, label_str = "FileContentViewer", dir = .Top)
 	}
@@ -245,7 +226,7 @@ build_multipanel_edit :: proc(window: ^Window, layout: ^Layout, ui: ^UI, multipa
 	add_file_content_viewer_button_state := button(ui = ui, label_str = "FileContentViewer", dir = .Top)
 
 	if add_file_content_viewer_button_state == .Clicked {
-		file_content_viewer_panel := add_panel(layout, "FileContentViewer", FileContentViewer)
+		file_content_viewer_panel := add_panel(layout, "FileContentViewer", FileContentViewer{})
 		attach_panel(layout, multipanel, file_content_viewer_panel)
 		window.skip_hang_once = true
 	}
