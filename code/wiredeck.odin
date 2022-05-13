@@ -58,8 +58,7 @@ main :: proc() {
 	layout := &layout_
 	init_layout(layout, window, ui, fs, global_arena_allocator)
 
-	attach_panel(layout, &layout.root, add_panel(layout, "FileContentViewer", FileContentViewer{}))
-	layout_edit_mode_active := false
+	attach_panel(layout, &layout.root, add_panel(layout, FileContentViewer{}))
 
 	for window.is_running {
 
@@ -70,7 +69,7 @@ main :: proc() {
 		wait_for_input(window, input)
 
 		if was_pressed(input, .F1) {
-			layout_edit_mode_active = !layout_edit_mode_active
+			layout.edit_mode = !layout.edit_mode
 		}
 
 		//
@@ -82,11 +81,7 @@ main :: proc() {
 		ui_begin(ui)
 
 		begin_container(ui, .Top, ui.total_dim.y / 2)
-		if layout_edit_mode_active {
-			build_edit_mode(layout)
-		} else {
-			build_contents(layout)
-		}
+		build_layout(layout)
 		end_container(ui)
 
 		pool_vis(ui, &global_pool)

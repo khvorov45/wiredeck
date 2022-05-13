@@ -8,6 +8,7 @@ Layout :: struct {
 	root: Multipanel,
 	panels: Freelist(Panel),
 	panel_refs_free: Linkedlist(PanelRef),
+	edit_mode: bool,
 	freelist_allocator: Allocator,
 }
 
@@ -19,8 +20,6 @@ Multipanel :: struct {
 }
 
 Panel :: struct {
-	name_chars: [64]u8,
-	name: string,
 	contents: PanelContents,
 	ref_count: int,
 }
@@ -51,17 +50,9 @@ init_layout :: proc(layout: ^Layout, window: ^Window, ui: ^UI, fs: ^Filesystem, 
 	freelist_init(&layout.panels, freelist_allocator)
 }
 
-add_panel :: proc(layout: ^Layout, name: string, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
-
+add_panel :: proc(layout: ^Layout, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
 	panel := freelist_append(&layout.panels, Panel{})
-
-	name_len := min(len(name), len(panel.entry.name_chars))
-	for index in 0..<name_len {
-		panel.entry.name_chars[index] = name[index]
-	}
-	panel.entry.name = string(panel.entry.name_chars[:name_len])
 	panel.entry.contents = contents
-
 	panel.entry.ref_count = 0
 	return panel
 }
@@ -124,6 +115,14 @@ detach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 	return next_ref
 }
 
+build_layout :: proc(layout: ^Layout) {
+	if layout.edit_mode {
+		build_edit_mode(layout)
+	} else {
+		build_contents(layout)
+	}
+}
+
 build_contents :: proc(layout: ^Layout) {
 	build_multipanel(layout, &layout.root)
 }
@@ -147,7 +146,7 @@ build_multipanel :: proc(layout: ^Layout, multipanel: ^Multipanel) {
 
 			button_state := button(
 				ui = ui,
-				label_str = panel.name,
+				label_str = "MULTIPANEL",
 				dir = .Left,
 				active = ptr_eq(multipanel.active, panel_entry),
 			)
@@ -225,7 +224,7 @@ build_multipanel_edit :: proc(layout: ^Layout, multipanel: ^Multipanel) {
 	add_file_content_viewer_button_state := button(ui = ui, label_str = "FileContentViewer", dir = .Top)
 
 	if add_file_content_viewer_button_state == .Clicked {
-		file_content_viewer_panel := add_panel(layout, "FileContentViewer", FileContentViewer{})
+		file_content_viewer_panel := add_panel(layout, FileContentViewer{})
 		attach_panel(layout, multipanel, file_content_viewer_panel)
 		layout.window.skip_hang_once = true
 	}
