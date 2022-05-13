@@ -27,6 +27,11 @@ OpenedFile :: struct {
 	cursor_scroll_ref: [2]Maybe(f32),
 }
 
+OpenedFiles :: struct {
+	files: Freelist(OpenedFile),
+	file_content_allocator: Allocator,
+}
+
 main :: proc() {
 
 	context.allocator = panic_allocator()
@@ -66,11 +71,11 @@ main :: proc() {
 
 	layout_: Layout
 	layout := &layout_
-	init_layout(layout, global_arena_allocator, global_pool_allocator)
+	init_layout(layout, global_arena_allocator)
 
-	opened_files_: Freelist(OpenedFile)
+	opened_files_ := OpenedFiles{file_content_allocator = global_pool_allocator}
 	opened_files := &opened_files_
-	freelist_init(opened_files, global_pool_allocator)
+	freelist_init(&opened_files.files, global_arena_allocator)
 
 	attach_panel(layout, &layout.root, add_panel(layout, "FileContentViewer", FileContentViewer{}))
 	layout_edit_mode_active := false
@@ -133,10 +138,12 @@ main :: proc() {
 }
 
 open_file :: proc(
-	filepath: string, text_cols: [TextColorID][4]f32, allocator: Allocator,
-) -> (opened_file: Maybe(OpenedFile)) {
+	opened_files: ^OpenedFiles, filepath: string, text_cols: [TextColorID][4]f32,
+) -> (file_in_list: ^LinkedlistEntry(OpenedFile)) {
 
-	if file_contents, success := read_entire_file(filepath, allocator).([]u8); success {
+	// TODO(khvorov) See if the file has already been opened
+
+	if file_contents, success := read_entire_file(filepath, opened_files.file_content_allocator).([]u8); success {
 
 		// NOTE(khvorov) Count lines and column widths
 		str := string(file_contents)
@@ -170,11 +177,11 @@ open_file :: proc(
 		colors := make([][4]f32, len(str))
 		highlight(filepath, str, &colors, text_cols)
 
-		fullpath := get_full_filepath(filepath, allocator)
+		fullpath := get_full_filepath(filepath, opened_files.file_content_allocator)
 		fullpath_col := make([][4]f32, len(fullpath))
 		highlight_filepath(fullpath, &fullpath_col, text_cols)
 
-		opened_file = OpenedFile {
+		opened_file := OpenedFile {
 			path = strings.clone(filepath),
 			fullpath = fullpath,
 			fullpath_col = fullpath_col,
@@ -187,9 +194,11 @@ open_file :: proc(
 			line_count = line_count,
 			max_col_width_glyphs = max_col_width_glyphs,
 		}
+
+		file_in_list = freelist_append(&opened_files.files, opened_file)
 	}
 
-	return opened_file
+	return file_in_list
 }
 
 /*

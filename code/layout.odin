@@ -5,7 +5,6 @@ Layout :: struct {
 	panels: Freelist(Panel),
 	panel_refs_free: Linkedlist(PanelRef),
 	freelist_allocator: Allocator,
-	pool_allocator: Allocator,
 }
 
 Multipanel :: struct {
@@ -34,7 +33,7 @@ PanelContents :: union {
 }
 
 FileContentViewer :: struct {
-	opened_file: ^OpenedFile,
+	file_in_list: ^LinkedlistEntry(OpenedFile),
 }
 
 MultipanelMode :: enum {
@@ -42,10 +41,9 @@ MultipanelMode :: enum {
 	Tab,
 }
 
-init_layout :: proc(layout: ^Layout, freelist_allocator, pool_allocator: Allocator) {
+init_layout :: proc(layout: ^Layout, freelist_allocator: Allocator) {
 	layout^ = {}
 	layout.freelist_allocator = freelist_allocator
-	layout.pool_allocator = pool_allocator
 	linkedlist_init(&layout.root.panel_refs, new(LinkedlistEntry(PanelRef), freelist_allocator))
 	freelist_init(&layout.panels, freelist_allocator)
 	linkedlist_init(&layout.panel_refs_free, new(LinkedlistEntry(PanelRef), freelist_allocator))
@@ -121,7 +119,7 @@ detach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 	return next_ref
 }
 
-build_contents :: proc(window: ^Window, layout: ^Layout, ui: ^UI, opened_files: ^Freelist(OpenedFile)) {
+build_contents :: proc(window: ^Window, layout: ^Layout, ui: ^UI, opened_files: ^OpenedFiles) {
 	build_multipanel(window, layout, ui, opened_files, &layout.root)
 }
 
@@ -131,7 +129,7 @@ build_edit_mode :: proc(window: ^Window, layout: ^Layout, ui: ^UI) {
 
 build_multipanel :: proc(
 	window: ^Window, layout: ^Layout, ui: ^UI,
-	opened_files: ^Freelist(OpenedFile), multipanel: ^Multipanel,
+	opened_files: ^OpenedFiles, multipanel: ^Multipanel,
 ) {
 
 	if multipanel.mode == .Tab {
@@ -192,20 +190,17 @@ build_multipanel :: proc(
 
 build_panel :: proc(
 	window: ^Window, layout: ^Layout, ui: ^UI,
-	opened_files: ^Freelist(OpenedFile), panel: ^Panel,
+	opened_files: ^OpenedFiles, panel: ^Panel,
 ) {
 	switch panel_val in &panel.contents {
 	case Multipanel: build_multipanel(window, layout, ui, opened_files, &panel_val)
 	case FileContentViewer:
-		if panel_val.opened_file != nil {
-			text_area(ui, panel_val.opened_file)
+		if panel_val.file_in_list != nil {
+			text_area(ui, &panel_val.file_in_list.entry)
 		} else {
 			if file_selected, some_file := file_selector(ui).(string); some_file {
-				// TODO(khvorov) See if the file has already been opened
-				contents_result := open_file(file_selected, ui.theme.text_colors, layout.pool_allocator)
-				if contents, open_success := contents_result.(OpenedFile); open_success {
-					contents_in_list := freelist_append(opened_files, contents)
-					panel_val.opened_file = &contents_in_list.entry
+				panel_val.file_in_list = open_file(opened_files, file_selected, ui.theme.text_colors)
+				if panel_val.file_in_list != nil {
 					window.skip_hang_once = true
 				}
 			}
