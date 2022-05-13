@@ -495,7 +495,7 @@ text :: proc(
 	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 }
 
-text_area :: proc(ui: ^UI, file: ^OpenedFile) {
+text_area :: proc(ui: ^UI, file: ^File, ref: ^FileRef) {
 	assert(file != nil)
 
 	line_count := file.line_count
@@ -522,7 +522,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		track = clip_rect_to_rect(track, text_area_rect)
 		_cmd_rect(ui, track, ui.theme.colors[.ScrollbarTrack])
 	}
-	cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, file.cursor_scroll_ref)
+	cursor_scroll_ref := _clamp_scroll_refs(scrollbar_tracks, ref.cursor_scroll_ref)
 
 	scroll_discrete := _get_scroll_discrete2(
 		scrollbar_tracks,
@@ -533,10 +533,10 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	)
 
 	line_offset, line_offset_delta :=
-		_get_scroll_offset_and_delta(ui.input, cursor_scroll_ref.y, file.line_offset_lines, scroll_discrete.y)
+		_get_scroll_offset_and_delta(ui.input, cursor_scroll_ref.y, ref.line_offset_lines, scroll_discrete.y)
 
 	col_offset, col_offset_delta :=
-		_get_scroll_offset_and_delta(ui.input, cursor_scroll_ref.x, file.col_offset, scroll_discrete.x)
+		_get_scroll_offset_and_delta(ui.input, cursor_scroll_ref.x, ref.col_offset, scroll_discrete.x)
 
 	scrollbar_v_thumb_rect := _get_scroll_thumb_rect(line_offset, scroll_discrete.y)
 	scrollbar_v_thumb_state := _get_rect_mouse_state(ui.input, scrollbar_v_thumb_rect)
@@ -557,7 +557,7 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 	)
 
 	// NOTE(sen) Figure out byte offset
-	byte_offset := file.line_offset_bytes
+	byte_offset := ref.line_offset_bytes
 	if line_offset_delta != 0 {
 		lines_skipped := 0
 
@@ -675,10 +675,10 @@ text_area :: proc(ui: ^UI, file: ^OpenedFile) {
 		}
 	}
 
-	file.line_offset_lines = line_offset
-	file.line_offset_bytes = byte_offset
-	file.cursor_scroll_ref = cursor_scroll_ref
-	file.col_offset = col_offset
+	ref.line_offset_lines = line_offset
+	ref.line_offset_bytes = byte_offset
+	ref.cursor_scroll_ref = cursor_scroll_ref
+	ref.col_offset = col_offset
 
 	if cursor_scroll_ref.y != nil || cursor_scroll_ref.x != nil {
 		ui.should_capture_mouse = true

@@ -13,25 +13,6 @@ ColorPickerState :: struct {
 	hue_drag, grad2d_drag: Maybe(DragRef),
 }
 
-OpenedFile :: struct {
-	path: string,
-	fullpath: string,
-	fullpath_col: [][4]f32, // NOTE(khvorov) Same length as fullpath bytes
-	content: string,
-	colors: [][4]f32, // NOTE(khvorov) Same length as content bytes
-	line_count: int,
-	max_col_width_glyphs: int,
-	line_offset_lines: int,
-	line_offset_bytes: int,
-	col_offset: int,
-	cursor_scroll_ref: [2]Maybe(f32),
-}
-
-OpenedFiles :: struct {
-	files: Freelist(OpenedFile),
-	file_content_allocator: Allocator,
-}
-
 main :: proc() {
 
 	context.allocator = panic_allocator()
@@ -69,13 +50,13 @@ main :: proc() {
 	ui := &ui_
 	init_ui(ui, window.dim.x, window.dim.y, input, &monospace_font, &varwidth_font, global_arena_allocator)
 
+	fs_: Filesystem
+	fs := &fs_
+	init_filesystem(fs, global_arena_allocator, global_pool_allocator)
+
 	layout_: Layout
 	layout := &layout_
-	init_layout(layout, global_arena_allocator)
-
-	opened_files_ := OpenedFiles{file_content_allocator = global_pool_allocator}
-	opened_files := &opened_files_
-	freelist_init(&opened_files.files, global_arena_allocator)
+	init_layout(layout, window, ui, fs, global_arena_allocator)
 
 	attach_panel(layout, &layout.root, add_panel(layout, "FileContentViewer", FileContentViewer{}))
 	layout_edit_mode_active := false
@@ -102,9 +83,9 @@ main :: proc() {
 
 		begin_container(ui, .Top, ui.total_dim.y / 2)
 		if layout_edit_mode_active {
-			build_edit_mode(window, layout, ui)
+			build_edit_mode(layout)
 		} else {
-			build_contents(window, layout, ui, opened_files)
+			build_contents(layout)
 		}
 		end_container(ui)
 
@@ -135,70 +116,6 @@ main :: proc() {
 
 		display_pixels(window, renderer.pixels, renderer.pixels_dim)
 	}
-}
-
-open_file :: proc(
-	opened_files: ^OpenedFiles, filepath: string, text_cols: [TextColorID][4]f32,
-) -> (file_in_list: ^LinkedlistEntry(OpenedFile)) {
-
-	// TODO(khvorov) See if the file has already been opened
-
-	if file_contents, success := read_entire_file(filepath, opened_files.file_content_allocator).([]u8); success {
-
-		// NOTE(khvorov) Count lines and column widths
-		str := string(file_contents)
-		line_count := 0
-		max_col_width_glyphs := 0
-		cur_col_width := 0
-		for index := 0; index < len(str); index += 1 {
-			ch := str[index]
-			if ch == '\n' || ch == '\r' {
-				line_count += 1
-				next_ch: u8 = 0
-				if index + 1 < len(str) {
-					next_ch = str[index + 1]
-				}
-				if ch == '\r' && next_ch == '\n' {
-					index += 1
-				}
-				max_col_width_glyphs = max(max_col_width_glyphs, cur_col_width)
-				cur_col_width = 0
-			} else if ch == '\t' {
-				cur_col_width += 4
-			} else {
-				cur_col_width += 1
-			}
-		}
-
-		// NOTE(khvorov) Account for last line
-		max_col_width_glyphs = max(max_col_width_glyphs, cur_col_width)
-		line_count += 1 // NOTE(khvorov) Start counting from 1
-
-		colors := make([][4]f32, len(str))
-		highlight(filepath, str, &colors, text_cols)
-
-		fullpath := get_full_filepath(filepath, opened_files.file_content_allocator)
-		fullpath_col := make([][4]f32, len(fullpath))
-		highlight_filepath(fullpath, &fullpath_col, text_cols)
-
-		opened_file := OpenedFile {
-			path = strings.clone(filepath),
-			fullpath = fullpath,
-			fullpath_col = fullpath_col,
-			content = str,
-			colors = colors,
-			line_offset_lines = 0,
-			line_offset_bytes = 0,
-			col_offset = 0,
-			cursor_scroll_ref = {nil, nil},
-			line_count = line_count,
-			max_col_width_glyphs = max_col_width_glyphs,
-		}
-
-		file_in_list = freelist_append(&opened_files.files, opened_file)
-	}
-
-	return file_in_list
 }
 
 /*

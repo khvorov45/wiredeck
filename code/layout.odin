@@ -1,6 +1,10 @@
 package wiredeck
 
 Layout :: struct {
+	window: ^Window,
+	layout: ^Layout,
+	ui: ^UI,
+	fs: ^Filesystem,
 	root: Multipanel,
 	panels: Freelist(Panel),
 	panel_refs_free: Linkedlist(PanelRef),
@@ -33,8 +37,8 @@ PanelContents :: union {
 }
 
 FileContentViewer :: struct {
-	filesystem_root: FilesystemEntry,
-	file_in_list: ^LinkedlistEntry(OpenedFile),
+	//selected: ???,
+	file_ref: FileRef,
 }
 
 MultipanelMode :: enum {
@@ -42,15 +46,8 @@ MultipanelMode :: enum {
 	Tab,
 }
 
-FilesystemEntry :: struct {
-	name: string,
-	entries: Maybe(Linkedlist(FilesystemEntry)),
-	active_entry: ^FilesystemEntry,
-}
-
-init_layout :: proc(layout: ^Layout, freelist_allocator: Allocator) {
-	layout^ = {}
-	layout.freelist_allocator = freelist_allocator
+init_layout :: proc(layout: ^Layout, window: ^Window, ui: ^UI, fs: ^Filesystem, freelist_allocator: Allocator) {
+	layout^ = {window = window, layout = layout, ui = ui, fs = fs, freelist_allocator = freelist_allocator}
 	freelist_init(&layout.panels, freelist_allocator)
 }
 
@@ -88,8 +85,8 @@ attach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 	panel.entry.ref_count += 1
 
 	panel_ref := linkedlist_remove_last_or_new(
-		&layout.panel_refs_free, 
-		PanelRef{panel, .Left, 500}, 
+		&layout.panel_refs_free,
+		PanelRef{panel, .Left, 500},
 		layout.freelist_allocator,
 	)
 	linkedlist_append(&multipanel.panel_refs, panel_ref)
@@ -127,18 +124,17 @@ detach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 	return next_ref
 }
 
-build_contents :: proc(window: ^Window, layout: ^Layout, ui: ^UI, opened_files: ^OpenedFiles) {
-	build_multipanel(window, layout, ui, opened_files, &layout.root)
+build_contents :: proc(layout: ^Layout) {
+	build_multipanel(layout, &layout.root)
 }
 
-build_edit_mode :: proc(window: ^Window, layout: ^Layout, ui: ^UI) {
-	build_multipanel_edit(window, layout, ui, &layout.root)
+build_edit_mode :: proc(layout: ^Layout) {
+	build_multipanel_edit(layout, &layout.root)
 }
 
-build_multipanel :: proc(
-	window: ^Window, layout: ^Layout, ui: ^UI,
-	opened_files: ^OpenedFiles, multipanel: ^Multipanel,
-) {
+build_multipanel :: proc(layout: ^Layout, multipanel: ^Multipanel) {
+
+	ui := layout.ui
 
 	if multipanel.mode == .Tab {
 		button_height := get_button_dim(ui, "T").y
@@ -167,7 +163,7 @@ build_multipanel :: proc(
 				skip_hang_once = false
 			}
 
-			window.skip_hang_once ||= skip_hang_once
+			layout.window.skip_hang_once ||= skip_hang_once
 			panel_entry = next_panel_entry
 		}
 		end_container(ui)
@@ -177,7 +173,7 @@ build_multipanel :: proc(
 
 	case .Tab:
 		if multipanel.active != nil {
-			build_panel(window, layout, ui, opened_files, &multipanel.active.entry.panel_in_list.entry)
+			build_panel(layout, &multipanel.active.entry.panel_in_list.entry)
 		}
 
 	case .Split:
@@ -189,33 +185,36 @@ build_multipanel :: proc(
 			panel := &panel_ref.panel_in_list.entry
 
 			begin_container(ui, panel_ref.split_dir, panel_ref.split_size)
-			build_panel(window, layout, ui, opened_files, panel)
+			build_panel(layout, panel)
 			end_container(ui)
 		}
 	}
 }
 
-build_panel :: proc(
-	window: ^Window, layout: ^Layout, ui: ^UI,
-	opened_files: ^OpenedFiles, panel: ^Panel,
-) {
+build_panel :: proc(layout: ^Layout, panel: ^Panel) {
+
+	ui := layout.ui
+
 	switch panel_val in &panel.contents {
-	case Multipanel: build_multipanel(window, layout, ui, opened_files, &panel_val)
+	case Multipanel: build_multipanel(layout, &panel_val)
+
 	case FileContentViewer:
-		if panel_val.file_in_list != nil {
-			text_area(ui, &panel_val.file_in_list.entry)
+		if panel_val.file_ref.file_in_list != nil {
+			text_area(ui, &panel_val.file_ref.file_in_list.entry, &panel_val.file_ref)
 		} else {
 			if file_selected, some_file := file_selector(ui).(string); some_file {
-				panel_val.file_in_list = open_file(opened_files, file_selected, ui.theme.text_colors)
-				if panel_val.file_in_list != nil {
-					window.skip_hang_once = true
+				panel_val.file_ref.file_in_list = open_file(layout.fs, file_selected, ui.theme.text_colors)
+				if panel_val.file_ref.file_in_list != nil {
+					layout.window.skip_hang_once = true
 				}
 			}
 		}
 	}
 }
 
-build_multipanel_edit :: proc(window: ^Window, layout: ^Layout, ui: ^UI, multipanel: ^Multipanel) {
+build_multipanel_edit :: proc(layout: ^Layout, multipanel: ^Multipanel) {
+
+	ui := layout.ui
 
 	for panel_ref := multipanel.panel_refs.first; panel_ref != nil; panel_ref = panel_ref.next {
 		add_multipanel_button_state := button(ui = ui, label_str = "Multipanel", dir = .Top)
@@ -228,6 +227,6 @@ build_multipanel_edit :: proc(window: ^Window, layout: ^Layout, ui: ^UI, multipa
 	if add_file_content_viewer_button_state == .Clicked {
 		file_content_viewer_panel := add_panel(layout, "FileContentViewer", FileContentViewer{})
 		attach_panel(layout, multipanel, file_content_viewer_panel)
-		window.skip_hang_once = true
+		layout.window.skip_hang_once = true
 	}
 }
