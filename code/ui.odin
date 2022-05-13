@@ -816,7 +816,63 @@ color_picker :: proc(
 }
 
 file_selector :: proc(ui: ^UI) -> (selected_file: Maybe(string)) {
-	text(ui, "File selector", .Top)
+
+	full_rect := _take_entire_rect(last_container(ui))
+	visible_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
+
+	cur_rect := full_rect
+	default_col_width := 100
+
+	cur_root: Maybe(string)
+	for {
+
+		cur_rect.dim.x = 0
+		filesystem_entries_iter := filesystem_entries_begin(cur_root)
+		for filesystem_entry_str in filesystem_entry_next(&filesystem_entries_iter, context.temp_allocator) {
+			cur_rect.dim.x = max(cur_rect.dim.x, get_button_dim(ui, filesystem_entry_str).x)
+		}
+		if cur_rect.dim.x == 0 {
+			cur_rect.dim.x = default_col_width
+		}
+
+		cur_text_rect := cur_rect
+		cur_text_rect.dim.y = get_button_dim(ui, "T").y
+
+		filesystem_entries_iter = filesystem_entries_begin(cur_root)
+		next_root: Maybe(string)
+		for filesystem_entry_str in filesystem_entry_next(&filesystem_entries_iter, context.temp_allocator) {
+
+			visible := clip_rect_to_rect(cur_text_rect, visible_rect)
+
+			state := _get_rect_mouse_state(ui.input, visible)
+
+			if state >= .Hovered {
+				_cmd_rect(ui, visible, ui.theme.colors[.BackgroundHovered])
+			}
+
+			if state == .Clicked {
+				next_root = strings.clone(filesystem_entry_str, ui.arena_allocator)
+			}
+
+			_cmd_textline(
+				ui = ui,
+				full = cur_text_rect,
+				visible = visible,
+				label_str = filesystem_entry_str,
+				text_align = .Begin,
+			)
+
+			cur_text_rect.topleft.y += cur_text_rect.dim.y
+		}
+
+		if next_root == nil {
+			break
+		} else {
+			cur_root = next_root
+			cur_rect.topleft.x += cur_rect.dim.x
+		}
+	}
+
 	return selected_file
 }
 

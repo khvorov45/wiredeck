@@ -1,7 +1,14 @@
 package wiredeck
 
 import "core:strings"
+import "core:fmt"
 import win "windows"
+
+FilesystemIter :: struct {
+	mask: win.DWORD,
+	next_index: int,
+	next_bit_index: int,
+}
 
 get_full_filepath :: proc(path: string, allocator: Allocator) -> (result: string) {
 	path_cstring := strings.clone_to_cstring(path, context.temp_allocator)
@@ -56,4 +63,37 @@ read_entire_file :: proc(path: string, allocator: Allocator) -> (contents: Maybe
 	}
 
 	return contents
+}
+
+filesystem_entries_begin :: proc(dir: Maybe(string)) -> (iter: FilesystemIter) {
+	if dir == nil {
+		iter = FilesystemIter{win.GetLogicalDrives(), 0, 0}
+	} else {
+		unimplemented("list folder entries")
+	}
+	return iter
+}
+
+filesystem_entry_next :: proc(
+	iter: ^FilesystemIter, allocator: Allocator,
+) -> (entry: string, index: int, present: bool) {
+
+	for bit_index in iter.next_bit_index ..< 32 {
+		logical_drive_available := (iter.mask & (1 << uint(bit_index))) != 0
+		if logical_drive_available {
+			ascii_code := int('A') + bit_index
+			{
+				context.allocator = allocator
+				entry = fmt.aprintf("%c:", rune(ascii_code))
+			}
+			index = iter.next_index
+			present = true
+
+			iter.next_index += 1
+			iter.next_bit_index = bit_index + 1
+			break
+		}
+	}
+	
+	return entry, index, present
 }

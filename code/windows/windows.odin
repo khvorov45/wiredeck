@@ -94,6 +94,7 @@ foreign win {
 		nSize: DWORD,
 		Argument: rawptr,
 	) -> DWORD ---
+	GetLogicalDrives :: proc() -> DWORD ---
 }
 
 LOWORD :: #force_inline proc "contextless" (x: DWORD) -> WORD {
