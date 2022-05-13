@@ -18,6 +18,7 @@ LinkedlistEntry :: struct($EntryType: typeid) {
 
 linkedlist_append :: proc(list: ^Linkedlist($EntryType), entry: ^LinkedlistEntry(EntryType)) {
 	if list.first == nil {
+		assert(list.last == nil)
 		list.first = entry
 		list.last = entry
 		entry.next = nil
@@ -51,6 +52,7 @@ linkedlist_remove_last_or_new :: proc(
 ) -> ^LinkedlistEntry(EntryType) {
 	new_entry: ^LinkedlistEntry(EntryType)
 	if list.last == nil {
+		assert(list.first == nil)
 		new_entry = new(LinkedlistEntry(EntryType), allocator)
 	} else {
 		new_entry = linkedlist_entry_remove(list, list.last)
