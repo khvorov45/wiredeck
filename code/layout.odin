@@ -10,7 +10,9 @@ Layout :: struct {
 
 Multipanel :: struct {
 	panel_refs: Linkedlist(PanelRef),
+	panel_count: int,
 	active: ^Panel,
+	mode: MultipanelMode,
 }
 
 Panel :: struct {
@@ -20,7 +22,11 @@ Panel :: struct {
 	ref_count: int,
 }
 
-PanelRef :: ^LinkedlistEntry(Panel)
+PanelRef :: struct {
+	panel_in_list: ^LinkedlistEntry(Panel),
+	split_dir: Direction,
+	split_size: int,
+}
 
 PanelContents :: union {
 	Multipanel,
@@ -29,6 +35,11 @@ PanelContents :: union {
 
 FileContentViewer :: struct {
 	opened_file: ^OpenedFile,
+}
+
+MultipanelMode :: enum {
+	Split,
+	Tab,
 }
 
 init_layout :: proc(layout: ^Layout, freelist_allocator, pool_allocator: Allocator) {
@@ -67,9 +78,14 @@ remove_panel :: proc(layout: ^Layout, panel_in_list: ^LinkedlistEntry(Panel)) {
 
 attach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^LinkedlistEntry(Panel)) -> ^LinkedlistEntry(PanelRef) {
 
+	multipanel.panel_count += 1
 	panel.entry.ref_count += 1
 
-	panel_ref := linkedlist_remove_last_or_new(&layout.panel_refs_free, panel, layout.freelist_allocator)
+	panel_ref := linkedlist_remove_last_or_new(
+		&layout.panel_refs_free, 
+		PanelRef{panel, .Left, 500}, 
+		layout.freelist_allocator,
+	)
 	linkedlist_append(&multipanel.panel_refs, panel_ref)
 
 	if multipanel.active == nil {
@@ -80,22 +96,26 @@ attach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^Linkedlis
 }
 
 detach_panel :: proc(layout: ^Layout, multipanel: ^Multipanel, panel: ^LinkedlistEntry(PanelRef)) -> ^LinkedlistEntry(PanelRef) {
-	next_ref := panel.next
-	panel.entry.entry.ref_count -= 1
 
-	if ptr_eq(multipanel.active, &panel.entry.entry) {
-		multipanel.active = &next_ref.entry.entry
+	assert(multipanel.panel_count > 0)
+	multipanel.panel_count -= 1
+	next_ref := panel.next
+	assert(panel.entry.panel_in_list.entry.ref_count > 0)
+	panel.entry.panel_in_list.entry.ref_count -= 1
+
+	if ptr_eq(multipanel.active, &panel.entry.panel_in_list.entry) {
+		multipanel.active = &next_ref.entry.panel_in_list.entry
 	}
 
-	if panel.entry.entry.ref_count == 0 {
-		remove_panel(layout, panel.entry)
+	if panel.entry.panel_in_list.entry.ref_count == 0 {
+		remove_panel(layout, panel.entry.panel_in_list)
 	}
 	linkedlist_remove_clear_append(panel, &layout.panel_refs_free)
 
 	if linkedlist_is_empty(&multipanel.panel_refs) {
 		multipanel.active = nil
-	} else if ptr_eq(&multipanel.panel_refs.sentinel.entry.entry, multipanel.active) {
-		multipanel.active = &multipanel.panel_refs.sentinel.prev.entry.entry
+	} else if ptr_eq(&multipanel.panel_refs.sentinel.entry.panel_in_list.entry, multipanel.active) {
+		multipanel.active = &multipanel.panel_refs.sentinel.prev.entry.panel_in_list.entry
 	}
 
 	return next_ref
@@ -110,56 +130,83 @@ build_edit_mode :: proc(window: ^Window, layout: ^Layout, ui: ^UI) {
 }
 
 build_multipanel :: proc(
-	window: ^Window, layout: ^Layout, ui: ^UI, 
+	window: ^Window, layout: ^Layout, ui: ^UI,
 	opened_files: ^Freelist(OpenedFile), multipanel: ^Multipanel,
 ) {
-	button_height := get_button_dim(ui, "T").y
 
-	begin_container(ui, .Top, button_height)
-	panel_refs := &multipanel.panel_refs
-	for panel_entry := panel_refs.sentinel.next;
-		!linkedlist_entry_is_sentinel(panel_refs, panel_entry); {
+	if multipanel.mode == .Tab {
+		button_height := get_button_dim(ui, "T").y
 
-		panel := &panel_entry.entry.entry
+		begin_container(ui, .Top, button_height)
+		panel_refs := &multipanel.panel_refs
+		for panel_entry := panel_refs.sentinel.next;
+			!linkedlist_entry_is_sentinel(panel_refs, panel_entry); {
 
-		button_state := button(
-			ui = ui,
-			label_str = panel.name,
-			dir = .Left,
-			active = ptr_eq(multipanel.active, panel),
-		)
+			panel := &panel_entry.entry.panel_in_list.entry
 
-		next_panel_entry := panel_entry.next
-		skip_hang_once := true
-		#partial switch button_state {
-		case .Clicked:
-			multipanel.active = panel
-		case .ClickedMiddle:
-			next_panel_entry = detach_panel(layout, multipanel, panel_entry)
-		case:
-			skip_hang_once = false
+			button_state := button(
+				ui = ui,
+				label_str = panel.name,
+				dir = .Left,
+				active = ptr_eq(multipanel.active, panel),
+			)
+
+			next_panel_entry := panel_entry.next
+			skip_hang_once := true
+			#partial switch button_state {
+			case .Clicked:
+				multipanel.active = panel
+			case .ClickedMiddle:
+				next_panel_entry = detach_panel(layout, multipanel, panel_entry)
+			case:
+				skip_hang_once = false
+			}
+
+			window.skip_hang_once ||= skip_hang_once
+			panel_entry = next_panel_entry
+		}
+		end_container(ui)
+	}
+
+	switch multipanel.mode {
+
+	case .Tab:
+		if multipanel.active != nil {
+			build_panel(window, layout, ui, opened_files, multipanel.active)
 		}
 
-		window.skip_hang_once ||= skip_hang_once
-		panel_entry = next_panel_entry
-	}
-	end_container(ui)
+	case .Split:
+		for panel_ref_in_list := multipanel.panel_refs.sentinel.next;
+			!linkedlist_entry_is_sentinel(&multipanel.panel_refs, panel_ref_in_list);
+			panel_ref_in_list = panel_ref_in_list.next {
 
-	if multipanel.active != nil {
-		switch panel_val in &multipanel.active.contents {
-		case Multipanel: build_multipanel(window, layout, ui, opened_files, &panel_val)
-		case FileContentViewer:
-			if panel_val.opened_file != nil {
-				text_area(ui, panel_val.opened_file)
-			} else {
-				if file_selected, some_file := file_selector(ui).(string); some_file {
-					// TODO(khvorov) See if the file has already been opened
-					contents_result := open_file(file_selected, ui.theme.text_colors, layout.pool_allocator)
-					if contents, open_success := contents_result.(OpenedFile); open_success {
-						contents_in_list := freelist_append(opened_files, contents)
-						panel_val.opened_file = &contents_in_list.entry
-						window.skip_hang_once = true
-					}
+			panel_ref := &panel_ref_in_list.entry
+			panel := &panel_ref.panel_in_list.entry
+
+			begin_container(ui, panel_ref.split_dir, panel_ref.split_size)
+			build_panel(window, layout, ui, opened_files, panel)
+			end_container(ui)
+		}
+	}
+}
+
+build_panel :: proc(
+	window: ^Window, layout: ^Layout, ui: ^UI,
+	opened_files: ^Freelist(OpenedFile), panel: ^Panel,
+) {
+	switch panel_val in &panel.contents {
+	case Multipanel: build_multipanel(window, layout, ui, opened_files, &panel_val)
+	case FileContentViewer:
+		if panel_val.opened_file != nil {
+			text_area(ui, panel_val.opened_file)
+		} else {
+			if file_selected, some_file := file_selector(ui).(string); some_file {
+				// TODO(khvorov) See if the file has already been opened
+				contents_result := open_file(file_selected, ui.theme.text_colors, layout.pool_allocator)
+				if contents, open_success := contents_result.(OpenedFile); open_success {
+					contents_in_list := freelist_append(opened_files, contents)
+					panel_val.opened_file = &contents_in_list.entry
+					window.skip_hang_once = true
 				}
 			}
 		}
