@@ -33,12 +33,19 @@ PanelContents :: union {
 }
 
 FileContentViewer :: struct {
+	filesystem_root: FilesystemEntry,
 	file_in_list: ^LinkedlistEntry(OpenedFile),
 }
 
 MultipanelMode :: enum {
 	Split,
 	Tab,
+}
+
+FilesystemEntry :: struct {
+	name: string,
+	entries: Maybe(Linkedlist(FilesystemEntry)),
+	active_entry: ^FilesystemEntry,
 }
 
 init_layout :: proc(layout: ^Layout, freelist_allocator: Allocator) {
@@ -54,7 +61,9 @@ layout_is_empty :: proc(layout: ^Layout) -> bool {
 	return result
 }
 
-add_panel :: proc(layout: ^Layout, name: string, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
+add_panel :: proc(layout: ^Layout, name: string, $ContentsType: typeid) -> ^LinkedlistEntry(Panel) {
+	#assert(ContentsType == Multipanel || ContentsType == FileContentViewer)
+
 	panel := freelist_append(&layout.panels, Panel{})
 
 	name_len := min(len(name), len(panel.entry.name_chars))
@@ -63,14 +72,28 @@ add_panel :: proc(layout: ^Layout, name: string, contents: PanelContents) -> ^Li
 	}
 	panel.entry.name = string(panel.entry.name_chars[:name_len])
 
-	panel.entry.contents = contents
-	panel.entry.ref_count = 0
+	when ContentsType == Multipanel {
+		contents := Multipanel{}
+		linkedlist_init(&contents.panel_refs, new(LinkedlistEntry(PanelRef), layout.freelist_allocator))
+		panel.entry.contents = contents
+	} else when ContentsType == FileContentViewer {
+		panel.entry.contents = FileContentViewer{}
+	}
 
+	panel.entry.ref_count = 0
 	return panel
 }
 
 remove_panel :: proc(layout: ^Layout, panel_in_list: ^LinkedlistEntry(Panel)) {
 	assert(panel_in_list.entry.ref_count == 0)
+
+	switch contents in panel_in_list.entry.contents {
+	case Multipanel:
+		unimplemented("detach all the children")
+	case FileContentViewer:
+		unimplemented("remove file ref and free file if nobody is referring to it")
+	}
+
 	freelist_remove(&layout.panels, panel_in_list)
 }
 
@@ -222,7 +245,7 @@ build_multipanel_edit :: proc(window: ^Window, layout: ^Layout, ui: ^UI, multipa
 	add_file_content_viewer_button_state := button(ui = ui, label_str = "FileContentViewer", dir = .Top)
 
 	if add_file_content_viewer_button_state == .Clicked {
-		file_content_viewer_panel := add_panel(layout, "FileContentViewer", FileContentViewer{})
+		file_content_viewer_panel := add_panel(layout, "FileContentViewer", FileContentViewer)
 		attach_panel(layout, multipanel, file_content_viewer_panel)
 		window.skip_hang_once = true
 	}
