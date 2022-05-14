@@ -4,6 +4,8 @@ import "core:strings"
 import "core:fmt"
 import win "windows"
 
+PATH_SEP :: '\\'
+
 FilesystemIter :: struct {
 	mask: win.DWORD,
 	next_index: int,

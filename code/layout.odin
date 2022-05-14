@@ -36,8 +36,8 @@ PanelContents :: union {
 }
 
 FileContentViewer :: struct {
-	//selected: ???,
-	file_ref: FileRef,
+	active_entry: ^FilesystemEntry,
+	active_file_ref: FileRef,
 }
 
 MultipanelMode :: enum {
@@ -198,13 +198,22 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 	case Multipanel: build_multipanel(layout, &panel_val)
 
 	case FileContentViewer:
-		if panel_val.file_ref.file_in_list != nil {
-			text_area(ui, &panel_val.file_ref.file_in_list.entry, &panel_val.file_ref)
+
+
+		if panel_val.active_file_ref.file_in_list != nil {
+			text_area(ui, &panel_val.active_file_ref)
+
 		} else {
-			if file_selected, some_file := file_selector(ui).(string); some_file {
-				panel_val.file_ref.file_in_list = open_file(layout.fs, file_selected, ui.theme.text_colors)
-				if panel_val.file_ref.file_in_list != nil {
-					layout.window.skip_hang_once = true
+			active_modified, active_opened := file_selector(ui, layout.fs, &panel_val.active_entry) 
+
+			if active_modified {
+				layout.window.skip_hang_once = true
+
+				if active_opened {
+					new_file_ref := open_file(layout.fs, panel_val.active_entry, ui.theme.text_colors)
+					if new_file_ref != nil {
+						panel_val.active_file_ref.file_in_list = new_file_ref
+					}
 				}
 			}
 		}

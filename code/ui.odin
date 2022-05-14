@@ -495,8 +495,11 @@ text :: proc(
 	_cmd_textline(ui, full, visible, label_str, label_col, text_align)
 }
 
-text_area :: proc(ui: ^UI, file: ^File, ref: ^FileRef) {
-	assert(file != nil)
+text_area :: proc(ui: ^UI, ref: ^FileRef) {
+	assert(ref != nil)
+	assert(ref.file_in_list != nil)
+
+	file := &ref.file_in_list.entry
 
 	line_count := file.line_count
 
@@ -815,7 +818,9 @@ color_picker :: proc(
 	}
 }
 
-file_selector :: proc(ui: ^UI) -> (selected_file: Maybe(string)) {
+file_selector :: proc(
+	ui: ^UI, filesystem: ^Filesystem, active: ^^FilesystemEntry,
+) -> (active_modified: bool, active_opened: bool) {
 
 	full_rect := _take_entire_rect(last_container(ui))
 	visible_rect := clip_rect_to_rect(full_rect, last_container(ui).visible)
@@ -873,7 +878,7 @@ file_selector :: proc(ui: ^UI) -> (selected_file: Maybe(string)) {
 		}
 	}
 
-	return selected_file
+	return active_modified, active_opened
 }
 
 linked_list_vis :: proc(ui: ^UI, name: string, list: ^Linkedlist($EntryType)) {

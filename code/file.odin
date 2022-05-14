@@ -11,8 +11,7 @@ Filesystem :: struct {
 }
 
 File :: struct {
-	path: string,
-	fullpath: string,
+	entry: ^FilesystemEntry,
 	fullpath_col: [][4]f32, // NOTE(khvorov) Same length as fullpath bytes
 	content: string,
 	colors: [][4]f32, // NOTE(khvorov) Same length as content bytes
@@ -30,7 +29,8 @@ FileRef :: struct {
 
 FilesystemEntry :: struct {
 	name: string,
-	entries: Linkedlist(FilesystemEntry),
+	parent: ^FilesystemEntry,
+	entries: Maybe(Linkedlist(FilesystemEntry)), // NOTE(khvorov) nil when file
 }
 
 init_filesystem :: proc(fs: ^Filesystem, freelist_allocator, file_content_allocator: Allocator) {
@@ -40,13 +40,13 @@ init_filesystem :: proc(fs: ^Filesystem, freelist_allocator, file_content_alloca
 	freelist_init(&fs.files, freelist_allocator)
 }
 
-
 open_file :: proc(
-	fs: ^Filesystem, filepath: string, text_cols: [TextColorID][4]f32,
+	fs: ^Filesystem, entry: ^FilesystemEntry, text_cols: [TextColorID][4]f32,
 ) -> (file_in_list: ^LinkedlistEntry(File)) {
 
 	// TODO(khvorov) See if the file has already been opened
 
+	filepath := path_from_entry(entry, context.temp_allocator)
 	if file_contents, success := read_entire_file(filepath, fs.file_content_allocator).([]u8); success {
 
 		// NOTE(khvorov) Count lines and column widths
@@ -86,8 +86,7 @@ open_file :: proc(
 		highlight_filepath(fullpath, &fullpath_col, text_cols)
 
 		opened_file := File {
-			path = strings.clone(filepath),
-			fullpath = fullpath,
+			entry = entry,
 			fullpath_col = fullpath_col,
 			content = str,
 			colors = colors,
@@ -99,4 +98,40 @@ open_file :: proc(
 	}
 
 	return file_in_list
+}
+
+path_from_entry :: proc(entry: ^FilesystemEntry, allocator: Allocator) -> string {
+
+	parents := make([dynamic]^FilesystemEntry, 0, 10, allocator)
+	total_path_len := len(entry.name)
+	for parent := entry.parent; parent != nil; parent = parent.parent {
+		append(&parents, parent)
+		total_path_len += len(parent.name) + 1 // NOTE(khvorov) 1 for /
+	}
+
+	write_string :: proc(buf: ^[]u8, str: string) {
+		for byte_index in 0..<len(str) {
+			buf[byte_index] = str[byte_index]
+		}
+		buf^ = buf[len(str):]
+	}
+
+	write_char :: proc(buf: ^[]u8, char: u8) {
+		buf[0] = char
+		buf^ = buf[1:]
+	}
+
+	path_buf := make([]u8, total_path_len)
+	path_buf_left := path_buf
+	for parent_index := len(parents) - 1; parent_index >= 0; parent_index -= 1 {
+		parent := parents[parent_index]
+		write_string(&path_buf_left, parent.name)
+		write_char(&path_buf_left, PATH_SEP)
+	}
+	write_string(&path_buf_left, entry.name)
+
+	path := string(path_buf)
+
+	delete(parents)
+	return path
 }
