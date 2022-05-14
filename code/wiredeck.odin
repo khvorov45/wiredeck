@@ -54,11 +54,13 @@ main :: proc() {
 	fs := &fs_
 	init_filesystem(fs, global_arena_allocator, global_pool_allocator)
 
+	open_file(fs, "build.bat", ui.theme.text_colors)
+
 	layout_: Layout
 	layout := &layout_
 	init_layout(layout, window, ui, fs, global_arena_allocator)
 
-	layout.root.contents = FileContentViewer{}
+	layout.root.contents = FileManager{}
 
 	for window.is_running {
 
