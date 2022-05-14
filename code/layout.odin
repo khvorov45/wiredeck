@@ -13,7 +13,6 @@ Layout :: struct {
 
 Panel :: struct {
 	children: Linkedlist(Panel),
-	child_count: int,
 	child_active: ^LinkedlistEntry(Panel), // NOTE(khvorov) nil means the panel itself is active
 	mode: PanelMode,
 	split_dir: Direction,
@@ -41,7 +40,6 @@ init_layout :: proc(layout: ^Layout, window: ^Window, ui: ^UI, fs: ^Filesystem, 
 }
 
 attach_panel :: proc(layout: ^Layout, panel: ^Panel, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
-	panel.child_count += 1
 	child := linkedlist_remove_last_or_new(&layout.panels_free, Panel{contents = contents}, layout.freelist_allocator)
 	linkedlist_append(&panel.children, child)
 	panel.child_active = child
@@ -50,8 +48,6 @@ attach_panel :: proc(layout: ^Layout, panel: ^Panel, contents: PanelContents) ->
 
 detach_panel :: proc(layout: ^Layout, panel: ^Panel, child: ^LinkedlistEntry(Panel)) -> ^LinkedlistEntry(Panel) {
 
-	assert(panel.child_count > 0)
-	panel.child_count -= 1
 	next_ref := child.next
 
 	if ptr_eq(panel.child_active, child) {
@@ -88,7 +84,7 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 
 	ui := layout.ui
 
-	if panel.mode == .Tab && panel.child_count > 0 {
+	if panel.mode == .Tab && panel.children.count > 0 {
 		button_height := get_button_dim(ui, "T").y
 
 		begin_container(ui, .Top, button_height)

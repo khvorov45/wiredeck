@@ -9,6 +9,7 @@ Freelist :: struct($EntryType: typeid) {
 Linkedlist :: struct($EntryType: typeid) {
 	first: ^LinkedlistEntry(EntryType),
 	last: ^LinkedlistEntry(EntryType),
+	count: int,
 }
 
 LinkedlistEntry :: struct($EntryType: typeid) {
@@ -17,6 +18,7 @@ LinkedlistEntry :: struct($EntryType: typeid) {
 }
 
 linkedlist_append :: proc(list: ^Linkedlist($EntryType), entry: ^LinkedlistEntry(EntryType)) {
+	list.count += 1
 	if list.first == nil {
 		assert(list.last == nil)
 		list.first = entry
@@ -32,6 +34,8 @@ linkedlist_append :: proc(list: ^Linkedlist($EntryType), entry: ^LinkedlistEntry
 }
 
 linkedlist_entry_remove :: proc(list: ^Linkedlist($EntryType), entry: ^LinkedlistEntry(EntryType)) -> ^LinkedlistEntry(EntryType) {
+	assert(list.count > 0)
+	list.count -= 1
 	if entry.prev != nil {
 		entry.prev.next = entry.next
 	} else {
