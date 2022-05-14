@@ -66,18 +66,10 @@ detach_panel :: proc(layout: ^Layout, panel: ^Panel, child: ^LinkedlistEntry(Pan
 
 build_layout :: proc(layout: ^Layout) {
 	if layout.edit_mode {
-		build_edit_mode(layout)
+		build_panel_edit(layout, &layout.root)
 	} else {
-		build_contents(layout)
+		build_panel(layout, &layout.root)
 	}
-}
-
-build_contents :: proc(layout: ^Layout) {
-	build_panel(layout, &layout.root)
-}
-
-build_edit_mode :: proc(layout: ^Layout) {
-	build_panel_edit(layout, &layout.root)
 }
 
 build_panel :: proc(layout: ^Layout, panel: ^Panel) {
