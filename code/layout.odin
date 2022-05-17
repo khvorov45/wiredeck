@@ -38,7 +38,12 @@ FileContentView :: struct {
 }
 
 FileManager :: struct {
-	selector_active: bool,
+	selector: Maybe(FileSelectorState),
+}
+
+FileSelectorState :: struct {
+	tree: Linkedlist(FilesystemEntry),
+	path: string,
 }
 
 PanelMode :: enum {
@@ -158,15 +163,15 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 	case FileManager:
 
 		if button(ui = ui, dir = .Top, label_str = "Add...", text_align = .Begin) == .Clicked {
-			panel_val.selector_active = !panel_val.selector_active
+			panel_val.selector = FileSelectorState{}
 		}
 
-		for file_in_list := layout.fs.files.used.first; file_in_list != nil; file_in_list = file_in_list.next {
-			file := &file_in_list.entry
-			button(ui = ui, dir = .Top, label_str = file.fullpath, label_col = file.fullpath_col, text_align = .Begin)
+		for open_entry_in_list := layout.fs.open.first; open_entry_in_list != nil; open_entry_in_list = open_entry_in_list.next {
+			entry := &open_entry_in_list.entry
+			button(ui = ui, dir = .Top, label_str = entry.fullpath.str, label_col = entry.fullpath.cols, text_align = .Begin)
 		}
 
-		if panel_val.selector_active {
+		if selector, some := panel_val.selector.(FileSelectorState); some {
 			unimplemented("file selector")
 		}
 

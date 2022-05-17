@@ -566,13 +566,13 @@ text_area :: proc(ui: ^UI, ref: ^FileContentView) {
 
 		if line_offset_delta > 0 {
 
-			for index := byte_offset; index < len(file.content); index += 1 {
-				ch := file.content[index]
+			for index := byte_offset; index < len(file.content.str); index += 1 {
+				ch := file.content.str[index]
 				if ch == '\n' || ch == '\r' {
 					lines_skipped += 1
 					next_ch: u8 = 0
-					if index + 1 < len(file.content) {
-						next_ch = file.content[index + 1]
+					if index + 1 < len(file.content.str) {
+						next_ch = file.content.str[index + 1]
 					}
 					if ch == '\r' && next_ch == '\n' {
 						index += 1
@@ -588,7 +588,7 @@ text_area :: proc(ui: ^UI, ref: ^FileContentView) {
 		} else {
 
 			for index := byte_offset - 1; index >= 0; index -= 1 {
-				ch := file.content[index]
+				ch := file.content.str[index]
 				if ch == '\n' || ch == '\r' {
 					lines_skipped += 1
 					if lines_skipped == -(line_offset_delta) + 1 {
@@ -597,7 +597,7 @@ text_area :: proc(ui: ^UI, ref: ^FileContentView) {
 					}
 					prev_ch: u8 = 0
 					if index - 1 >= 0 {
-						prev_ch = file.content[index - 1]
+						prev_ch = file.content.str[index - 1]
 					}
 					if ch == '\n' && prev_ch == '\r' {
 						index -= 1
@@ -606,12 +606,12 @@ text_area :: proc(ui: ^UI, ref: ^FileContentView) {
 			}
 		}
 	}
-	byte_offset = clamp(byte_offset, 0, len(file.content))
+	byte_offset = clamp(byte_offset, 0, len(file.content.str))
 
 	// NOTE(khvorov) Text content
-	assert(len(file.content) == len(file.colors))
-	str_left := file.content[byte_offset:]
-	colors_left := file.colors[byte_offset:]
+	assert(len(file.content.str) == len(file.content.cols))
+	str_left := file.content.str[byte_offset:]
+	colors_left := file.content.cols[byte_offset:]
 	current_topleft_y := text_area_rect.topleft.y
 	current_topleft_x_num := line_numbers_rect.topleft.x + ui.theme.sizes[.TextAreaGutter]
 	current_topleft_x_line := text_rect.topleft.x

@@ -3,39 +3,42 @@ package wiredeck
 import "core:strings"
 
 Filesystem :: struct {
-	tree: Linkedlist(FilesystemEntry),
-	files: Freelist(File),
+	open: Linkedlist(FilesystemEntry),
 	entries_free: Linkedlist(FilesystemEntry),
 	freelist_allocator: Allocator,
 	file_content_allocator: Allocator,
 }
 
 FilesystemEntry :: struct {
-	name: string,
-	parent: ^FilesystemEntry,
-	is_dir: bool,
+	fullpath: ColoredString,
+	parent: Maybe(^FilesystemEntry), // NOTE(khvorov) nill on maybe - didn't look; nill on ptr - no parent
+	content: union {Dir, File},
+}
+
+Dir :: struct {
 	entries: Linkedlist(FilesystemEntry),
 }
 
 File :: struct {
-	fullpath: string,
-	fullpath_col: [][4]f32, // NOTE(khvorov) Same length as fullpath bytes
-	content: string,
-	colors: [][4]f32, // NOTE(khvorov) Same length as content bytes
+	content: ColoredString,
 	line_count: int,
 	max_col_width_glyphs: int,
+}
+
+ColoredString :: struct {
+	str: string,
+	cols: [][4]f32, // NOTE(khvorov) Same length as str bytes
 }
 
 init_filesystem :: proc(fs: ^Filesystem, freelist_allocator, file_content_allocator: Allocator) {
 	fs^ = {}
 	fs.file_content_allocator = file_content_allocator
 	fs.freelist_allocator = freelist_allocator
-	freelist_init(&fs.files, freelist_allocator)
 }
 
 open_file :: proc(
 	fs: ^Filesystem, filepath: string, text_cols: [TextColorID][4]f32,
-) -> (file_in_list: ^LinkedlistEntry(File)) {
+) -> (entry_in_list: ^LinkedlistEntry(FilesystemEntry)) {
 
 	// TODO(khvorov) See if the file has already been opened
 
@@ -78,52 +81,22 @@ open_file :: proc(
 		highlight_filepath(fullpath, &fullpath_col, text_cols)
 
 		opened_file := File {
-			fullpath = fullpath,
-			fullpath_col = fullpath_col,
-			content = str,
-			colors = colors,
+			content = ColoredString{str, colors},
 			line_count = line_count,
 			max_col_width_glyphs = max_col_width_glyphs,
 		}
 
-		file_in_list = freelist_append(&fs.files, opened_file)
+		entry_in_list = linkedlist_remove_last_or_new(
+			&fs.entries_free,
+			FilesystemEntry{ColoredString{fullpath, fullpath_col}, nil, opened_file},
+			fs.freelist_allocator,
+		)
+		linkedlist_append(&fs.open, entry_in_list)
 	}
 
-	return file_in_list
+	return entry_in_list
 }
 
-path_from_entry :: proc(entry: ^FilesystemEntry, allocator: Allocator) -> string {
+open_dir :: proc(fs: ^Filesystem, dirpath: string, text_cols: [TextColorID][4]f32) {
 
-	parents := make([dynamic]^FilesystemEntry, 0, 10, allocator)
-	total_path_len := len(entry.name)
-	for parent := entry.parent; parent != nil; parent = parent.parent {
-		append(&parents, parent)
-		total_path_len += len(parent.name) + 1 // NOTE(khvorov) 1 for /
-	}
-
-	write_string :: proc(buf: ^[]u8, str: string) {
-		for byte_index in 0..<len(str) {
-			buf[byte_index] = str[byte_index]
-		}
-		buf^ = buf[len(str):]
-	}
-
-	write_char :: proc(buf: ^[]u8, char: u8) {
-		buf[0] = char
-		buf^ = buf[1:]
-	}
-
-	path_buf := make([]u8, total_path_len)
-	path_buf_left := path_buf
-	for parent_index := len(parents) - 1; parent_index >= 0; parent_index -= 1 {
-		parent := parents[parent_index]
-		write_string(&path_buf_left, parent.name)
-		write_char(&path_buf_left, PATH_SEP)
-	}
-	write_string(&path_buf_left, entry.name)
-
-	path := string(path_buf)
-
-	delete(parents)
-	return path
 }

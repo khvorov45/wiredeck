@@ -55,6 +55,7 @@ main :: proc() {
 	init_filesystem(fs, global_arena_allocator, global_pool_allocator)
 
 	open_file(fs, "build.bat", ui.theme.text_colors)
+	open_dir(fs, "code", ui.theme.text_colors)
 
 	layout_: Layout
 	layout := &layout_
