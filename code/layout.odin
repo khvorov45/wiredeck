@@ -14,11 +14,14 @@ Layout :: struct {
 Panel :: struct {
 	children: Linkedlist(Panel),
 	child_active: ^LinkedlistEntry(Panel), // NOTE(khvorov) nil means the panel itself is active
-	mode: PanelMode,
-	split_dir: Direction,
-	split_size: int,
-	ref_count: int,
+	children_mode: PanelMode,
+	split: Maybe(PanelSplitSpec),
 	contents: PanelContents,
+}
+
+PanelSplitSpec :: struct {
+	dir: Direction,
+	size: int,
 }
 
 PanelContents :: union {
@@ -47,8 +50,12 @@ init_layout :: proc(layout: ^Layout, window: ^Window, ui: ^UI, fs: ^Filesystem, 
 	layout^ = {window = window, layout = layout, ui = ui, fs = fs, freelist_allocator = freelist_allocator}
 }
 
-attach_panel :: proc(layout: ^Layout, panel: ^Panel, contents: PanelContents) -> ^LinkedlistEntry(Panel) {
-	child := linkedlist_remove_last_or_new(&layout.panels_free, Panel{contents = contents}, layout.freelist_allocator)
+attach_panel :: proc(
+	layout: ^Layout, panel: ^Panel, contents: PanelContents, 
+	split_spec: Maybe(PanelSplitSpec) = nil,
+) -> ^LinkedlistEntry(Panel) {
+	new_panel := Panel{contents = contents, split = split_spec}
+	child := linkedlist_remove_last_or_new(&layout.panels_free, new_panel, layout.freelist_allocator)
 	linkedlist_append(&panel.children, child)
 	panel.child_active = child
 	return child
@@ -73,6 +80,7 @@ detach_panel :: proc(layout: ^Layout, panel: ^Panel, child: ^LinkedlistEntry(Pan
 }
 
 build_layout :: proc(layout: ^Layout) {
+	assert(layout.root.contents == nil, "layout root panel should be empty")
 	if layout.edit_mode {
 		build_panel_edit(layout, &layout.root)
 	} else {
@@ -84,7 +92,7 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 
 	ui := layout.ui
 
-	if panel.mode == .Tab && panel.children.count > 0 {
+	if panel.children_mode == .Tab && panel.children.count > 0 {
 		button_height := get_button_dim(ui, "T").y
 
 		begin_container(ui, .Top, button_height)
@@ -117,7 +125,7 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 		end_container(ui)
 	}
 
-	switch panel.mode {
+	switch panel.children_mode {
 
 	case .Tab:
 		if panel.child_active != nil {
@@ -131,7 +139,14 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 
 			child_panel := &child_in_list.entry
 
-			begin_container(ui, child_panel.split_dir, child_panel.split_size)
+			split_dir := Direction.Top
+			split_size := last_container(ui).available.dim.y
+			if child_split, some := child_panel.split.(PanelSplitSpec); some {
+				split_dir = child_split.dir
+				split_size = child_split.size 
+			}
+
+			begin_container(ui, split_dir, split_size)
 			build_panel(layout, child_panel)
 			end_container(ui)
 		}
