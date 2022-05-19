@@ -61,7 +61,7 @@ main :: proc() {
 	layout := &layout_
 	init_layout(layout, window, ui, fs, global_arena_allocator)
 
-	attach_panel(layout, &layout.root, FileManager{});
+	layout.root.contents = FileManager{}
 
 	for window.is_running {
 

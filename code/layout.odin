@@ -56,7 +56,7 @@ init_layout :: proc(layout: ^Layout, window: ^Window, ui: ^UI, fs: ^Filesystem, 
 }
 
 attach_panel :: proc(
-	layout: ^Layout, panel: ^Panel, contents: PanelContents, 
+	layout: ^Layout, panel: ^Panel, contents: PanelContents,
 	split_spec: Maybe(PanelSplitSpec) = nil,
 ) -> ^LinkedlistEntry(Panel) {
 	new_panel := Panel{contents = contents, split = split_spec}
@@ -85,7 +85,6 @@ detach_panel :: proc(layout: ^Layout, panel: ^Panel, child: ^LinkedlistEntry(Pan
 }
 
 build_layout :: proc(layout: ^Layout) {
-	assert(layout.root.contents == nil, "layout root panel should be empty")
 	if layout.edit_mode {
 		build_panel_edit(layout, &layout.root)
 	} else {
@@ -96,6 +95,10 @@ build_layout :: proc(layout: ^Layout) {
 build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 
 	ui := layout.ui
+
+	//
+	// SECTION Tabs
+	//
 
 	if panel.children_mode == .Tab && panel.children.count > 0 {
 		button_height := get_button_dim(ui, "T").y
@@ -130,6 +133,10 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 		end_container(ui)
 	}
 
+	//
+	// SECTION Children
+	//
+
 	switch panel.children_mode {
 
 	case .Tab:
@@ -140,26 +147,29 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 	case .Split:
 		for child_in_list := panel.children.first;
 			child_in_list != nil;
-			child_in_list = child_in_list.next {
-
+			child_in_list = child_in_list.next
+		{
 			child_panel := &child_in_list.entry
-
-			split_dir := Direction.Top
-			split_size := last_container(ui).available.dim.y
-			if child_split, some := child_panel.split.(PanelSplitSpec); some {
-				split_dir = child_split.dir
-				split_size = child_split.size 
-			}
-
-			begin_container(ui, split_dir, split_size)
 			build_panel(layout, child_panel)
-			end_container(ui)
 		}
 	}
 
+	//
+	// SECTION Self
+	//
+
+	split_dir := Direction.Top
+	split_size := last_container(ui).available.dim.y
+	if child_split, some := panel.split.(PanelSplitSpec); some {
+		split_dir = child_split.dir
+		split_size = child_split.size
+	}
+
+	begin_container(ui, split_dir, split_size)
+
 	switch panel_val in &panel.contents {
 	case FileContentView: text_area(ui, &panel_val)
-	
+
 	case FileManager:
 
 		if button(ui = ui, dir = .Top, label_str = "Add...", text_align = .Begin) == .Clicked {
@@ -232,6 +242,8 @@ build_panel :: proc(layout: ^Layout, panel: ^Panel) {
 
 
 	}
+
+	end_container(ui)
 }
 
 build_panel_edit :: proc(layout: ^Layout, panel: ^Panel) {
