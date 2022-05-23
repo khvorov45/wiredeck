@@ -394,18 +394,15 @@ pool_allocator_proc :: proc(
 						marker.free_till_next = false
 
 						if free_bytes - uintptr(size_aligned) >= size_of(PoolMarker) + 1024 {
-							marker_copy := marker^
-							marker = cast(^PoolMarker)rawptr(uintptr(raw_data(data)) - size_of(PoolMarker))
-							marker^ = marker_copy
-							
-							if marker.prev != nil {
-								marker.prev.next = marker
-							}
+							new_marker := cast(^PoolMarker)raw_data(data[len(data):])
+							new_marker.next = marker.next;
+							new_marker.prev = marker;
+							new_marker.free_till_next = true;
 
-							marker.next = cast(^PoolMarker)raw_data(data[len(data):])
-							marker.next.next = marker_copy.next
-							marker.next.prev = marker
-							marker.next.free_till_next = true
+							marker.next = new_marker;
+							if new_marker.next != nil {
+								new_marker.next.prev = new_marker;
+							}
 						}
 					}
 				}
