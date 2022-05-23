@@ -63,6 +63,11 @@ main :: proc() {
 
 	layout.root.contents = FileManager{}
 
+	data1: []u8
+	data2: []u8
+	data3: []u8
+	data4: []u8
+
 	for window.is_running {
 
 		//
@@ -73,6 +78,50 @@ main :: proc() {
 
 		if was_pressed(input, .F1) {
 			layout.edit_mode = !layout.edit_mode
+		}
+
+		if was_pressed(input, .F2) {
+			if data1 == nil {
+				err: AllocatorError
+				data1, err = make_aligned([]u8, 5 * MEGABYTE + 1, 32, global_pool_allocator)
+				assert(err == .None)
+			} else {
+				delete(data1, global_pool_allocator)
+				data1 = nil
+			}
+		}
+
+		if was_pressed(input, .F3) {
+			if data2 == nil {
+				err: AllocatorError
+				data2, err = make_aligned([]u8, 7 * MEGABYTE + 1, 32, global_pool_allocator)
+				assert(err == .None)
+			} else {
+				delete(data2, global_pool_allocator)
+				data2 = nil
+			}
+		}
+
+		if was_pressed(input, .F4) {
+			if data3 == nil {
+				err: AllocatorError
+				data3, err = make_aligned([]u8, 3 * MEGABYTE + 1, 32, global_pool_allocator)
+				assert(err == .None)
+			} else {
+				delete(data3, global_pool_allocator)
+				data3 = nil
+			}
+		}
+
+		if was_pressed(input, .F5) {
+			if data4 == nil {
+				err: AllocatorError
+				data4, err = make_aligned([]u8, 8 * MEGABYTE + 1, 32, global_pool_allocator)
+				assert(err == .None)
+			} else {
+				delete(data4, global_pool_allocator)
+				data4 = nil
+			}
 		}
 
 		//

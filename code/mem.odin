@@ -53,6 +53,7 @@ PoolChunk :: struct {
 }
 
 PoolMarker :: struct {
+	chunk: ^PoolChunk,
 	free_till_next: bool,
 	next, prev: ^PoolMarker,
 }
@@ -351,7 +352,7 @@ memory_pool_init :: proc(pool: ^MemoryPool, min_chunk_size: int, chunk_allocator
 		pool.first_chunk^ = {len(first_chunk_data), nil, nil, nil}
 
 		pool.first_chunk.first_marker = cast(^PoolMarker)raw_data(first_chunk_data[size_of(PoolChunk):])
-		pool.first_chunk.first_marker^ = {true, nil, nil}
+		pool.first_chunk.first_marker^ = {pool.first_chunk, true, nil, nil}
 	}
 
 	return err
@@ -399,12 +400,16 @@ pool_allocator_proc :: proc(
 						if marker.prev != nil {
 							marker.prev.next = marker
 						}
+						if marker.next != nil {
+							marker.next.prev = marker
+						}
 
 						if free_bytes - uintptr(size_aligned) >= size_of(PoolMarker) + 1024 {
 							new_marker := cast(^PoolMarker)raw_data(data[len(data):])
 							new_marker.next = marker.next;
 							new_marker.prev = marker;
 							new_marker.free_till_next = true;
+							new_marker.chunk = chunk;
 
 							marker.next = new_marker;
 							if new_marker.next != nil {
@@ -433,14 +438,25 @@ pool_allocator_proc :: proc(
 					next_marker = next_marker.next
 				} else {
 					marker.next = next_marker
+					marker.next.prev = marker
 					break
 				}
 			}
 		}
 
-		if marker.prev != nil {
-			for prev_marker := marker.prev; prev_marker.free_till_next; {
+		if marker.prev == nil {
+			marker_copy := marker^
+			marker.chunk.first_marker = cast(^PoolMarker)rawptr(uintptr(marker.chunk) + size_of(PoolChunk))
+			marker.chunk.first_marker^ = marker_copy
+			if marker.chunk.first_marker.next != nil {
+				marker.chunk.first_marker.next.prev = marker.chunk.first_marker
+			}
+		} else {
+			for prev_marker := marker.prev; prev_marker != nil && prev_marker.free_till_next; {
 				prev_marker.next = marker.next
+				if prev_marker.next != nil {
+					prev_marker.next.prev = prev_marker
+				}
 				prev_marker = prev_marker.prev
 			}
 		}

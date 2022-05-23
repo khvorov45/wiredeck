@@ -849,7 +849,14 @@ pool_vis :: proc(ui: ^UI, pool: ^MemoryPool) {
 		cur_chunk_rect.dim.x = chunk.size / bytes_over_pixels
 		_cmd_rect(ui, clip_rect_to_rect(cur_chunk_rect, visible_rect), [4]f32{0, 1, 0, 1})
 
+		if chunk.first_marker.free_till_next {
+			assert(uintptr(chunk.first_marker) == uintptr(chunk) + size_of(chunk))
+		}
+
 		for marker := chunk.first_marker; marker != nil; marker = marker.next {
+
+			assert(marker.next == nil || marker.next.prev == marker)
+			assert(marker.prev == nil || marker.prev.next == marker)
 
 			marker_rect := cur_chunk_rect
 			marker_rect.dim.x = 2

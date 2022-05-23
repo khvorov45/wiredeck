@@ -11,7 +11,7 @@ KeyID :: enum {
 	AltR, AltL, Enter, Shift, Space, Ctrl,
 	W, A, S, D, Q, E,
 	Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9, Digit0,
-	F1, F2, F3, F4, F11,
+	F1, F2, F3, F4, F5, F11,
 }
 
 MouseButtonID :: enum { MouseLeft, MouseMiddle, MouseRight }
