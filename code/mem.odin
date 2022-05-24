@@ -399,6 +399,8 @@ pool_allocator_proc :: proc(
 						marker^ = marker_copy
 						if marker.prev != nil {
 							marker.prev.next = marker
+						} else {
+							chunk.first_marker = marker
 						}
 						if marker.next != nil {
 							marker.next.prev = marker
@@ -427,6 +429,7 @@ pool_allocator_proc :: proc(
 
 	case .Free:
 		marker := cast(^PoolMarker)rawptr(uintptr(old_memory) - size_of(PoolMarker))
+		assert(!marker.free_till_next, "double free")
 		marker.free_till_next = true
 
 		for next_marker := marker.next;; {
@@ -446,10 +449,11 @@ pool_allocator_proc :: proc(
 
 		if marker.prev == nil {
 			marker_copy := marker^
-			marker.chunk.first_marker = cast(^PoolMarker)rawptr(uintptr(marker.chunk) + size_of(PoolChunk))
-			marker.chunk.first_marker^ = marker_copy
-			if marker.chunk.first_marker.next != nil {
-				marker.chunk.first_marker.next.prev = marker.chunk.first_marker
+			chunk := marker_copy.chunk
+			chunk.first_marker = cast(^PoolMarker)rawptr(uintptr(chunk) + size_of(PoolChunk))
+			chunk.first_marker^ = marker_copy
+			if chunk.first_marker.next != nil {
+				chunk.first_marker.next.prev = chunk.first_marker
 			}
 		} else {
 			for prev_marker := marker.prev; prev_marker != nil && prev_marker.free_till_next; {
