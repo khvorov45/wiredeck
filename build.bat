@@ -7,9 +7,10 @@ rem odin run tests -out:build/tests.exe -debug
 call shell.bat
 
 del build\SDL\*.obj
+del build\SDL.pdb
 cl /nologo /c ^
 	/Zi ^
-	/Fobuild\SDL\ ^
+	/Fobuild\SDL\ /Fdbuild\SDL.pdb ^
 	/Icode\SDL\include ^
 	-DSDL_AUDIO_DISABLED ^
 	-DSDL_HAPTIC_DISABLED ^
@@ -43,6 +44,6 @@ lib /nologo build\SDL\*.obj -out:build\SDL.lib
 del build\wiredeck*
 cl /nologo ^
 	/Zi ^
-	/Febuild/wiredeck.exe /Fobuild/wiredeck.obj ^
+	/Febuild/wiredeck.exe /Fobuild/wiredeck.obj /Fdbuild/wiredeck.pdb ^
 	code\wiredeck.c ^
 	/link build/sdl.lib Ole32.lib Advapi32.lib Winmm.lib User32.lib Gdi32.lib OleAut32.lib Imm32.lib Shell32.lib Version.lib
