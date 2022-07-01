@@ -1,2 +1,5 @@
-/ft-include/**
 /build/**
+*.bat
+*.exe
+*.ttf
+*.rdbg
