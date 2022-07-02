@@ -26,6 +26,7 @@ typedef char* cstring;
 
 typedef int32_t b32;
 typedef int32_t i32;
+typedef uint64_t u64;
 
 typedef enum BuildMode {
 	BuildMode_Debug,
@@ -260,7 +261,69 @@ clearDir(cstring path) {
 
 void
 cmdRunLog(CompileCmd* cmd) {
-	printf("RUN %s; objDir: '%s'; out: '%s'\n%s\n%s\n", cmd->name, cmd->objDir, cmd->outPath, cmd->cmd, cmd->libCmd);
+	printf("RUN %s; objDir: '%s'; out: '%s'\n", cmd->name, cmd->objDir, cmd->outPath);
+}
+
+void
+cmdNoRunLog(CompileCmd* cmd) {
+	printf("SKIP %s\n", cmd->name);
+}
+
+u64
+getLastModified(cstring path) {
+	u64 result = 0;
+
+	#if PLATFORM_WINDOWS
+		WIN32_FIND_DATAA findData;
+		HANDLE firstHandle = FindFirstFileA(path, &findData);
+		if (firstHandle != INVALID_HANDLE_VALUE) {
+
+			u64 thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+			result = max(result, thisLastMod);
+			while (FindNextFileA(firstHandle, &findData)) {
+				thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+				result = max(result, thisLastMod);
+			}
+			FindClose(firstHandle);
+		}
+	#endif
+
+	return result;
+}
+
+u64
+getLastModifiedSource(cstring* sources, i32 sourcesLen) {
+	u64 result = 0;
+	for (i32 srcIndex = 0; srcIndex < sourcesLen; srcIndex++) {
+		cstring src = sources[srcIndex];
+		u64 thisLastMod = getLastModified(src);
+		result = max(result, thisLastMod);
+	}
+	return result;
+}
+
+void
+execShellCmd(cstring cmd) {
+	#if PLATFORM_WINDOWS
+		STARTUPINFOA startupInfo = {0};
+		startupInfo.cb = sizeof(STARTUPINFOA);
+
+		PROCESS_INFORMATION processInfo;
+		if (CreateProcessA(0, cmd, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo) == 0) {
+			printf("ERR: failed to run\n%s\n", cmd);
+		} else {
+			printf("OK: run\n%s\n", cmd);
+			WaitForSingleObject(processInfo.hProcess, INFINITE);
+		}
+	#endif
+}
+
+void
+cmdRun(CompileCmd* cmd) {
+	execShellCmd(cmd->cmd);
+	if (cmd->libCmd) {
+		execShellCmd(cmd->libCmd);
+	}
 }
 
 int
@@ -310,11 +373,16 @@ main() {
 		outDir, "SDL", buildMode, BuildKind_Lib, sdlFlags, arrLen(sdlFlags), sdlSources, arrLen(sdlSources)
 	);
 
-	cmdRunLog(&sdlCompileCmd);
+	u64 sdlOutTime = getLastModified(sdlCompileCmd.outPath);
+	u64 sdlInTime = getLastModifiedSource(sdlSources, arrLen(sdlSources));
 
-	clearDir(outDir);
-
-	createDir(sdlCompileCmd.objDir);
+	if (sdlInTime > sdlOutTime) {
+		clearDir(sdlCompileCmd.objDir);
+		cmdRunLog(&sdlCompileCmd);
+		cmdRun(&sdlCompileCmd);
+	} else {
+		cmdNoRunLog(&sdlCompileCmd);
+	}
 
 	return 0;
 }
