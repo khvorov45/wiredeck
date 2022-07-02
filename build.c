@@ -29,18 +29,41 @@ typedef int32_t i32;
 
 typedef enum BuildMode {
 	BuildMode_Debug,
+	BuildMode_Len,
 } BuildMode;
+
+typedef enum BuildKind {
+	BuildKind_Lib,
+	BuildKind_Exe,
+} BuildKind;
 
 typedef struct DynCstring {
 	cstring buf;
 	i32 len;
 	i32 cap;
+	i32 markers[4];
+	i32 markersLen;
 } DynCstring;
+
+typedef struct CompileCmd {
+	cstring name;
+	cstring cmd;
+	cstring outPath;
+	cstring libCmd;
+	cstring objDir;
+} CompileCmd;
 
 i32
 cstringLen(cstring str) {
 	i32 result = 0;
 	while (str[result] != '\0') result++;
+	return result;
+}
+
+cstring
+cstringFrom(cstring str, i32 strLen) {
+	cstring result = calloc(strLen + 1, 1);
+	memcpy(result, str, strLen);
 	return result;
 }
 
@@ -71,6 +94,20 @@ dynCStringPush(DynCstring* dynCString, cstring src) {
 	dynCString->len += srcLen;
 }
 
+void
+dynCStringMark(DynCstring* dynCString) {
+	assert(dynCString->markersLen < arrLen(dynCString->markers));
+	dynCString->markers[dynCString->markersLen++] = dynCString->len;
+}
+
+cstring
+dynCStringCloneCstringFromMarker(DynCstring* dynCString) {
+	assert(dynCString->markersLen > 0);
+	i32 marker = dynCString->markers[--dynCString->markersLen];
+	cstring result = cstringFrom(dynCString->buf + marker, dynCString->len - marker);
+	return result;
+}
+
 b32
 isFile(cstring path) {
 	b32 result = false;
@@ -99,21 +136,25 @@ isDir(cstring path) {
 	return result;
 }
 
-cstring
+CompileCmd
 constructCompileCommand(
-	cstring outDir, cstring outName, BuildMode buildMode,
+	cstring outDir, cstring outName, BuildMode buildMode, BuildKind buildKind,
 	cstring* flags, i32 flagsLen,
 	cstring* sources, i32 sourcesLen
 ) {
-	DynCstring result = {0};
+	DynCstring cmdBuilder = {0};
 
 	#if PLATFORM_WINDOWS
-		dynCStringPush(&result, "cl /nologo ");
+		dynCStringPush(&cmdBuilder, "cl /nologo ");
 	#endif
 
+	if (buildKind == BuildKind_Lib) {
+		dynCStringPush(&cmdBuilder, "-c ");
+	}
+
 	for (i32 flagIndex = 0; flagIndex < flagsLen; flagIndex++) {
-		dynCStringPush(&result, flags[flagIndex]);
-		dynCStringPush(&result, " ");
+		dynCStringPush(&cmdBuilder, flags[flagIndex]);
+		dynCStringPush(&cmdBuilder, " ");
 	}
 
 	#if PLATFORM_WINDOWS
@@ -121,35 +162,74 @@ constructCompileCommand(
 	#endif
 
 	switch (buildMode) {
-	case BuildMode_Debug: dynCStringPush(&result, debugFlags); break;
+	case BuildMode_Debug: dynCStringPush(&cmdBuilder, debugFlags); break;
 	}
 
 	#if PLATFORM_WINDOWS
-		dynCStringPush(&result, "/Fo");
-		dynCStringPush(&result, outDir);
-		dynCStringPush(&result, "/");
-		dynCStringPush(&result, outName);
-		dynCStringPush(&result, "/ ");
+		dynCStringPush(&cmdBuilder, "/Fo");
+		dynCStringPush(&cmdBuilder, outDir);
+		dynCStringPush(&cmdBuilder, "/");
+		dynCStringPush(&cmdBuilder, outName);
+		dynCStringPush(&cmdBuilder, "/ ");
 
-		dynCStringPush(&result, "/Fd");
-		dynCStringPush(&result, outDir);
-		dynCStringPush(&result, "/");
-		dynCStringPush(&result, outName);
-		dynCStringPush(&result, ".pdb ");
+		dynCStringPush(&cmdBuilder, "/Fd");
 
-		dynCStringPush(&result, "/Fe");
-		dynCStringPush(&result, outDir);
-		dynCStringPush(&result, "/");
-		dynCStringPush(&result, outName);
-		dynCStringPush(&result, ".exe ");
+		dynCStringMark(&cmdBuilder);
+		dynCStringPush(&cmdBuilder, outDir);
+		dynCStringPush(&cmdBuilder, "/");
+		dynCStringPush(&cmdBuilder, outName);
+		cstring objDir = dynCStringCloneCstringFromMarker(&cmdBuilder);
+
+		dynCStringPush(&cmdBuilder, ".pdb ");
+
+		dynCStringPush(&cmdBuilder, "/Fe");
+
+		dynCStringMark(&cmdBuilder);
+		dynCStringPush(&cmdBuilder, outDir);
+		dynCStringPush(&cmdBuilder, "/");
+		dynCStringPush(&cmdBuilder, outName);
+		dynCStringPush(&cmdBuilder, ".exe");
+		cstring outPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
+
+		dynCStringPush(&cmdBuilder, " ");
 	#endif
 
 	for (i32 srcIndex = 0; srcIndex < sourcesLen; srcIndex++) {
-		dynCStringPush(&result, sources[srcIndex]);
-		dynCStringPush(&result, " ");
+		dynCStringPush(&cmdBuilder, sources[srcIndex]);
+		dynCStringPush(&cmdBuilder, " ");
 	}
 
-	return result.buf;
+	cstring libCmd = 0;
+
+	if (buildKind == BuildKind_Lib) {
+		DynCstring libCmdBuilder = {0};
+
+		dynCStringMark(&libCmdBuilder);
+
+		#if PLATFORM_WINDOWS
+			dynCStringPush(&libCmdBuilder, "lib /nologo ");
+			dynCStringPush(&libCmdBuilder, objDir);
+			dynCStringPush(&libCmdBuilder, "/*.obj -out:");
+
+			dynCStringMark(&libCmdBuilder);
+			dynCStringPush(&libCmdBuilder, outDir);
+			dynCStringPush(&libCmdBuilder, "/");
+			dynCStringPush(&libCmdBuilder, outName);
+			dynCStringPush(&libCmdBuilder, ".lib");
+			outPath = dynCStringCloneCstringFromMarker(&libCmdBuilder);
+		#endif
+
+		libCmd = dynCStringCloneCstringFromMarker(&libCmdBuilder);
+	}
+
+	CompileCmd result = {
+		.name = outName,
+		.cmd = cmdBuilder.buf,
+		.outPath = outPath,
+		.libCmd = libCmd,
+		.objDir = objDir,
+	};
+	return result;
 }
 
 void
@@ -178,21 +258,14 @@ clearDir(cstring path) {
 	createDir(path);
 }
 
+void
+cmdRunLog(CompileCmd* cmd) {
+	printf("RUN %s; objDir: '%s'; out: '%s'\n%s\n%s\n", cmd->name, cmd->objDir, cmd->outPath, cmd->cmd, cmd->libCmd);
+}
+
 int
 main() {
 	BuildMode buildMode = BuildMode_Debug;
-
-	cstring outDir = "build";
-	switch (buildMode) {
-	case BuildMode_Debug: outDir = "build-debug"; break;
-	}
-	clearDir(outDir);
-
-	char strBuf[64] = {0};
-
-	cstring sdlOutName = "SDL";
-	sprintf(strBuf, "%s/%s", outDir, sdlOutName);
-	createDir(strBuf);
 
 	cstring sdlSources[] = {
 		"code/SDL/src/atomic/*.c",
@@ -218,8 +291,7 @@ main() {
 	};
 
 	cstring sdlFlags[] = {
-		"-c",
-		"-Icode/SDL/include"
+		"-Icode/SDL/include",
 		"-DSDL_AUDIO_DISABLED",
 	 	"-DSDL_HAPTIC_DISABLED",
 	 	"-DSDL_HIDAPI_DISABLED",
@@ -229,11 +301,20 @@ main() {
 	 	"-DSDL_JOYSTICK_DISABLED",
 	};
 
-	cstring sdlCompileCmd = constructCompileCommand(
-		outDir, sdlOutName, buildMode, sdlFlags, arrLen(sdlFlags), sdlSources, arrLen(sdlSources)
+	char* outDirs[BuildMode_Len] = {0};
+	outDirs[BuildMode_Debug] = "build-debug";
+
+	char* outDir = outDirs[buildMode];
+
+	CompileCmd sdlCompileCmd = constructCompileCommand(
+		outDir, "SDL", buildMode, BuildKind_Lib, sdlFlags, arrLen(sdlFlags), sdlSources, arrLen(sdlSources)
 	);
 
-	printf("SDL compile command:\n%s\n", sdlCompileCmd);
+	cmdRunLog(&sdlCompileCmd);
+
+	clearDir(outDir);
+
+	createDir(sdlCompileCmd.objDir);
 
 	return 0;
 }
