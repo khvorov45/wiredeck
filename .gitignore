@@ -3,3 +3,6 @@
 *.exe
 *.ttf
 *.rdbg
+*.obj
+*.pdb
+*.ilk
