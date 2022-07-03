@@ -351,8 +351,9 @@ execStep(Builder builder, Step step) {
 
 	u64 outTime = getLastModified(cmd.outPath);
 	u64 inTime = getLastModifiedSource(step.sources, step.sourcesLen);
+	u64 depTime = getLastModifiedSource(step.link, step.linkLen);
 
-	if (inTime > outTime) {
+	if (inTime > outTime || depTime > outTime) {
 		createDirIfNotExists(builder.outDir);
 		clearDir(cmd.objDir);
 		cmdRunLog(&cmd);
@@ -416,6 +417,11 @@ main() {
 	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
 	cstring wiredeckSources[] = {"code/wiredeck.c"};
+	cstring wiredeckFlags[] = {
+		#if PLATFORM_WINDOWS
+			"-DPLATFORM_WINDOWS",
+		#endif
+	};
 	cstring wiredeckLink[] = {
 		sdlCmd.outPath,
 		#if PLATFORM_WINDOWS
@@ -429,8 +435,8 @@ main() {
 		.kind = BuildKind_Exe,
 		.sources = wiredeckSources,
 		.sourcesLen = arrLen(wiredeckSources),
-		.flags = 0,
-		.flagsLen = 0,
+		.flags = wiredeckFlags,
+		.flagsLen = arrLen(wiredeckFlags),
 		.link = wiredeckLink,
 		.linkLen = arrLen(wiredeckLink),
 	};

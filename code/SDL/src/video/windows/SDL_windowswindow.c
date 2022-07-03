@@ -500,6 +500,10 @@ WIN_CreateWindow(_THIS, SDL_Window * window)
         ShowWindow(hwnd, SW_SHOWMINNOACTIVE);
     }
 
+    // NOTE(khvorov) Hack to avoid a white flash on startup
+    ShowWindow(hwnd, SW_SHOWMINIMIZED);
+    ShowWindow(hwnd, SW_SHOWNORMAL);
+
     if (!(window->flags & SDL_WINDOW_OPENGL)) {
         return 0;
     }
