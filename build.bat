@@ -6,7 +6,11 @@ rem odin run tests -out:build/tests.exe -debug
 
 call shell.bat
 
-cl /nologo /Zi /diagnostics:column /D_CRT_SECURE_NO_WARNINGS /DPLATFORM_WINDOWS /W3 build.c /link Shell32.lib && build.exe
+cl /nologo /Zi /diagnostics:column ^
+	/D_CRT_SECURE_NO_WARNINGS /DPLATFORM_WINDOWS /W3 ^
+	/Fdbuild.pdb ^
+	build.c ^
+	/link Shell32.lib && build.exe
 
 rem del build\SDL\*.obj
 rem del build\SDL.pdb

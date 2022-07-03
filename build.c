@@ -52,6 +52,7 @@ typedef struct CompileCmd {
 	cstring outPath;
 	cstring libCmd;
 	cstring objDir;
+	cstring outDir;
 } CompileCmd;
 
 i32
@@ -139,17 +140,22 @@ isDir(cstring path) {
 
 CompileCmd
 constructCompileCommand(
-	cstring outDir, cstring outName, BuildMode buildMode, BuildKind buildKind,
+	cstring name, BuildMode mode, BuildKind kind,
+	cstring* sources, i32 sourcesLen,
 	cstring* flags, i32 flagsLen,
-	cstring* sources, i32 sourcesLen
+	cstring* link, i32 linkLen
 ) {
+	char* outDirs[BuildMode_Len] = {0};
+	outDirs[BuildMode_Debug] = "build-debug";
+	char* outDir = outDirs[mode];
+
 	DynCstring cmdBuilder = {0};
 
 	#if PLATFORM_WINDOWS
 		dynCStringPush(&cmdBuilder, "cl /nologo ");
 	#endif
 
-	if (buildKind == BuildKind_Lib) {
+	if (kind == BuildKind_Lib) {
 		dynCStringPush(&cmdBuilder, "-c ");
 	}
 
@@ -162,7 +168,7 @@ constructCompileCommand(
 		cstring debugFlags = "/Zi ";
 	#endif
 
-	switch (buildMode) {
+	switch (mode) {
 	case BuildMode_Debug: dynCStringPush(&cmdBuilder, debugFlags); break;
 	}
 
@@ -170,7 +176,7 @@ constructCompileCommand(
 		dynCStringPush(&cmdBuilder, "/Fo");
 		dynCStringPush(&cmdBuilder, outDir);
 		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, outName);
+		dynCStringPush(&cmdBuilder, name);
 		dynCStringPush(&cmdBuilder, "/ ");
 
 		dynCStringPush(&cmdBuilder, "/Fd");
@@ -178,7 +184,7 @@ constructCompileCommand(
 		dynCStringMark(&cmdBuilder);
 		dynCStringPush(&cmdBuilder, outDir);
 		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, outName);
+		dynCStringPush(&cmdBuilder, name);
 		cstring objDir = dynCStringCloneCstringFromMarker(&cmdBuilder);
 
 		dynCStringPush(&cmdBuilder, ".pdb ");
@@ -188,7 +194,7 @@ constructCompileCommand(
 		dynCStringMark(&cmdBuilder);
 		dynCStringPush(&cmdBuilder, outDir);
 		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, outName);
+		dynCStringPush(&cmdBuilder, name);
 		dynCStringPush(&cmdBuilder, ".exe");
 		cstring outPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
 
@@ -202,7 +208,7 @@ constructCompileCommand(
 
 	cstring libCmd = 0;
 
-	if (buildKind == BuildKind_Lib) {
+	if (kind == BuildKind_Lib) {
 		DynCstring libCmdBuilder = {0};
 
 		dynCStringMark(&libCmdBuilder);
@@ -215,7 +221,7 @@ constructCompileCommand(
 			dynCStringMark(&libCmdBuilder);
 			dynCStringPush(&libCmdBuilder, outDir);
 			dynCStringPush(&libCmdBuilder, "/");
-			dynCStringPush(&libCmdBuilder, outName);
+			dynCStringPush(&libCmdBuilder, name);
 			dynCStringPush(&libCmdBuilder, ".lib");
 			outPath = dynCStringCloneCstringFromMarker(&libCmdBuilder);
 		#endif
@@ -223,18 +229,34 @@ constructCompileCommand(
 		libCmd = dynCStringCloneCstringFromMarker(&libCmdBuilder);
 	}
 
+	if (kind == BuildKind_Exe) {
+
+		if (linkLen > 0) {
+			#if PLATFORM_WINDOWS
+				dynCStringPush(&cmdBuilder, "/link /incremental:no ");
+			#endif
+		}
+
+		for (i32 linkIndex = 0; linkIndex < linkLen; linkIndex++) {
+			cstring thisLink = link[linkIndex];
+			dynCStringPush(&cmdBuilder, thisLink);
+			dynCStringPush(&cmdBuilder, " ");
+		}
+	}
+
 	CompileCmd result = {
-		.name = outName,
+		.name = name,
 		.cmd = cmdBuilder.buf,
 		.outPath = outPath,
 		.libCmd = libCmd,
 		.objDir = objDir,
+		.outDir = outDir,
 	};
 	return result;
 }
 
 void
-createDir(cstring path) {
+createDirIfNotExists(cstring path) {
 	#if PLATFORM_WINDOWS
 		CreateDirectory(path, 0);
 	#endif
@@ -256,7 +278,7 @@ clearDir(cstring path) {
 		free(pathDoubleNull);
 	#endif
 
-	createDir(path);
+	createDirIfNotExists(path);
 }
 
 void
@@ -326,6 +348,33 @@ cmdRun(CompileCmd* cmd) {
 	}
 }
 
+CompileCmd
+step(
+	cstring name, BuildMode mode, BuildKind kind,
+	cstring* sources, i32 sourcesLen,
+	cstring* flags, i32 flagsLen,
+	cstring* link, i32 linkLen
+) {
+	CompileCmd cmd = constructCompileCommand(
+		name, mode, kind, sources, sourcesLen, flags, flagsLen, link, linkLen
+	);
+
+	u64 outTime = getLastModified(cmd.outPath);
+	u64 inTime = getLastModifiedSource(sources, sourcesLen);
+	u64 buildFileTime = getLastModified(__FILE__);
+
+	if (inTime > outTime || buildFileTime > outTime) {
+		createDirIfNotExists(cmd.outDir);
+		clearDir(cmd.objDir);
+		cmdRunLog(&cmd);
+		cmdRun(&cmd);
+	} else {
+		cmdNoRunLog(&cmd);
+	}
+
+	return cmd;
+}
+
 int
 main() {
 	BuildMode buildMode = BuildMode_Debug;
@@ -364,25 +413,23 @@ main() {
 	 	"-DSDL_JOYSTICK_DISABLED",
 	};
 
-	char* outDirs[BuildMode_Len] = {0};
-	outDirs[BuildMode_Debug] = "build-debug";
+	CompileCmd sdlCmd = step("SDL", buildMode, BuildKind_Lib, sdlSources, arrLen(sdlSources), sdlFlags, arrLen(sdlFlags), 0, 0);
 
-	char* outDir = outDirs[buildMode];
+	cstring wiredeckSources[] = {"code/wiredeck.c"};
+	cstring wiredeckLink[] = {
+		sdlCmd.outPath,
+		#if PLATFORM_WINDOWS
+		"Ole32.lib", "Advapi32.lib", "Winmm.lib", "User32.lib", "Gdi32.lib",
+		"OleAut32.lib", "Imm32.lib", "Shell32.lib", "Version.lib",
+		#endif
+	};
 
-	CompileCmd sdlCompileCmd = constructCompileCommand(
-		outDir, "SDL", buildMode, BuildKind_Lib, sdlFlags, arrLen(sdlFlags), sdlSources, arrLen(sdlSources)
+	step(
+		"wiredeck", buildMode, BuildKind_Exe,
+		wiredeckSources, arrLen(wiredeckSources),
+		0, 0,
+		wiredeckLink, arrLen(wiredeckLink)
 	);
-
-	u64 sdlOutTime = getLastModified(sdlCompileCmd.outPath);
-	u64 sdlInTime = getLastModifiedSource(sdlSources, arrLen(sdlSources));
-
-	if (sdlInTime > sdlOutTime) {
-		clearDir(sdlCompileCmd.objDir);
-		cmdRunLog(&sdlCompileCmd);
-		cmdRun(&sdlCompileCmd);
-	} else {
-		cmdNoRunLog(&sdlCompileCmd);
-	}
 
 	return 0;
 }
