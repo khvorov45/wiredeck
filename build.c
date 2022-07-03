@@ -52,8 +52,23 @@ typedef struct CompileCmd {
 	cstring outPath;
 	cstring libCmd;
 	cstring objDir;
-	cstring outDir;
 } CompileCmd;
+
+typedef struct Builder {
+	BuildMode mode;
+	cstring outDir;
+} Builder;
+
+typedef struct Step {
+	cstring name;
+	BuildKind kind;
+	cstring* sources;
+	i32 sourcesLen;
+	cstring* flags;
+	i32 flagsLen;
+	cstring* link;
+	i32 linkLen;
+} Step;
 
 i32
 cstringLen(cstring str) {
@@ -110,57 +125,21 @@ dynCStringCloneCstringFromMarker(DynCstring* dynCString) {
 	return result;
 }
 
-b32
-isFile(cstring path) {
-	b32 result = false;
-
-	#if PLATFORM_WINDOWS
-		DWORD attr = GetFileAttributesA(path);
-		if (attr != INVALID_FILE_ATTRIBUTES) {
-			result = (attr & FILE_ATTRIBUTE_NORMAL) != 0;
-		}
-	#endif
-
-	return result;
-}
-
-b32
-isDir(cstring path) {
-	b32 result = false;
-
-	#if PLATFORM_WINDOWS
-		DWORD attr = GetFileAttributesA(path);
-		if (attr != INVALID_FILE_ATTRIBUTES) {
-			result = (attr & FILE_ATTRIBUTE_DIRECTORY) != 0;
-		}
-	#endif
-
-	return result;
-}
-
 CompileCmd
-constructCompileCommand(
-	cstring name, BuildMode mode, BuildKind kind,
-	cstring* sources, i32 sourcesLen,
-	cstring* flags, i32 flagsLen,
-	cstring* link, i32 linkLen
-) {
-	char* outDirs[BuildMode_Len] = {0};
-	outDirs[BuildMode_Debug] = "build-debug";
-	char* outDir = outDirs[mode];
+constructCompileCommand(Builder builder, Step step) {
 
 	DynCstring cmdBuilder = {0};
 
 	#if PLATFORM_WINDOWS
-		dynCStringPush(&cmdBuilder, "cl /nologo ");
+		dynCStringPush(&cmdBuilder, "cl /nologo /diagnostics:column ");
 	#endif
 
-	if (kind == BuildKind_Lib) {
+	if (step.kind == BuildKind_Lib) {
 		dynCStringPush(&cmdBuilder, "-c ");
 	}
 
-	for (i32 flagIndex = 0; flagIndex < flagsLen; flagIndex++) {
-		dynCStringPush(&cmdBuilder, flags[flagIndex]);
+	for (i32 flagIndex = 0; flagIndex < step.flagsLen; flagIndex++) {
+		dynCStringPush(&cmdBuilder, step.flags[flagIndex]);
 		dynCStringPush(&cmdBuilder, " ");
 	}
 
@@ -168,23 +147,23 @@ constructCompileCommand(
 		cstring debugFlags = "/Zi ";
 	#endif
 
-	switch (mode) {
+	switch (builder.mode) {
 	case BuildMode_Debug: dynCStringPush(&cmdBuilder, debugFlags); break;
 	}
 
 	#if PLATFORM_WINDOWS
 		dynCStringPush(&cmdBuilder, "/Fo");
-		dynCStringPush(&cmdBuilder, outDir);
+		dynCStringPush(&cmdBuilder, builder.outDir);
 		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, name);
+		dynCStringPush(&cmdBuilder, step.name);
 		dynCStringPush(&cmdBuilder, "/ ");
 
 		dynCStringPush(&cmdBuilder, "/Fd");
 
 		dynCStringMark(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, outDir);
+		dynCStringPush(&cmdBuilder, builder.outDir);
 		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, name);
+		dynCStringPush(&cmdBuilder, step.name);
 		cstring objDir = dynCStringCloneCstringFromMarker(&cmdBuilder);
 
 		dynCStringPush(&cmdBuilder, ".pdb ");
@@ -192,23 +171,23 @@ constructCompileCommand(
 		dynCStringPush(&cmdBuilder, "/Fe");
 
 		dynCStringMark(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, outDir);
+		dynCStringPush(&cmdBuilder, builder.outDir);
 		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, name);
+		dynCStringPush(&cmdBuilder, step.name);
 		dynCStringPush(&cmdBuilder, ".exe");
 		cstring outPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
 
 		dynCStringPush(&cmdBuilder, " ");
 	#endif
 
-	for (i32 srcIndex = 0; srcIndex < sourcesLen; srcIndex++) {
-		dynCStringPush(&cmdBuilder, sources[srcIndex]);
+	for (i32 srcIndex = 0; srcIndex < step.sourcesLen; srcIndex++) {
+		dynCStringPush(&cmdBuilder, step.sources[srcIndex]);
 		dynCStringPush(&cmdBuilder, " ");
 	}
 
 	cstring libCmd = 0;
 
-	if (kind == BuildKind_Lib) {
+	if (step.kind == BuildKind_Lib) {
 		DynCstring libCmdBuilder = {0};
 
 		dynCStringMark(&libCmdBuilder);
@@ -219,9 +198,9 @@ constructCompileCommand(
 			dynCStringPush(&libCmdBuilder, "/*.obj -out:");
 
 			dynCStringMark(&libCmdBuilder);
-			dynCStringPush(&libCmdBuilder, outDir);
+			dynCStringPush(&libCmdBuilder, builder.outDir);
 			dynCStringPush(&libCmdBuilder, "/");
-			dynCStringPush(&libCmdBuilder, name);
+			dynCStringPush(&libCmdBuilder, step.name);
 			dynCStringPush(&libCmdBuilder, ".lib");
 			outPath = dynCStringCloneCstringFromMarker(&libCmdBuilder);
 		#endif
@@ -229,28 +208,29 @@ constructCompileCommand(
 		libCmd = dynCStringCloneCstringFromMarker(&libCmdBuilder);
 	}
 
-	if (kind == BuildKind_Exe) {
+	if (step.kind == BuildKind_Exe) {
 
-		if (linkLen > 0) {
+		if (step.linkLen > 0) {
 			#if PLATFORM_WINDOWS
 				dynCStringPush(&cmdBuilder, "/link /incremental:no ");
 			#endif
 		}
 
-		for (i32 linkIndex = 0; linkIndex < linkLen; linkIndex++) {
-			cstring thisLink = link[linkIndex];
-			dynCStringPush(&cmdBuilder, thisLink);
-			dynCStringPush(&cmdBuilder, " ");
+		for (i32 linkIndex = 0; linkIndex < step.linkLen; linkIndex++) {
+			cstring thisLink = step.link[linkIndex];
+			#if PLATFORM_WINDOWS
+				dynCStringPush(&cmdBuilder, thisLink);
+				dynCStringPush(&cmdBuilder, " ");
+			#endif
 		}
 	}
 
 	CompileCmd result = {
-		.name = name,
+		.name = step.name,
 		.cmd = cmdBuilder.buf,
 		.outPath = outPath,
 		.libCmd = libCmd,
 		.objDir = objDir,
-		.outDir = outDir,
 	};
 	return result;
 }
@@ -324,6 +304,23 @@ getLastModifiedSource(cstring* sources, i32 sourcesLen) {
 	return result;
 }
 
+Builder
+newBuilder(BuildMode mode) {
+	char* outDirs[BuildMode_Len] = {0};
+	outDirs[BuildMode_Debug] = "build-debug";
+	char* outDir = outDirs[mode];
+
+	u64 buildFileTime = getLastModified(__FILE__);
+	u64 outDirCreateTime = getLastModified(outDir);
+
+	if (buildFileTime > outDirCreateTime) {
+		clearDir(outDir);
+	}
+
+	Builder result = {.mode = mode, .outDir = outDir};
+	return result;
+}
+
 void
 execShellCmd(cstring cmd) {
 	#if PLATFORM_WINDOWS
@@ -349,22 +346,14 @@ cmdRun(CompileCmd* cmd) {
 }
 
 CompileCmd
-step(
-	cstring name, BuildMode mode, BuildKind kind,
-	cstring* sources, i32 sourcesLen,
-	cstring* flags, i32 flagsLen,
-	cstring* link, i32 linkLen
-) {
-	CompileCmd cmd = constructCompileCommand(
-		name, mode, kind, sources, sourcesLen, flags, flagsLen, link, linkLen
-	);
+execStep(Builder builder, Step step) {
+	CompileCmd cmd = constructCompileCommand(builder, step);
 
 	u64 outTime = getLastModified(cmd.outPath);
-	u64 inTime = getLastModifiedSource(sources, sourcesLen);
-	u64 buildFileTime = getLastModified(__FILE__);
+	u64 inTime = getLastModifiedSource(step.sources, step.sourcesLen);
 
-	if (inTime > outTime || buildFileTime > outTime) {
-		createDirIfNotExists(cmd.outDir);
+	if (inTime > outTime) {
+		createDirIfNotExists(builder.outDir);
 		clearDir(cmd.objDir);
 		cmdRunLog(&cmd);
 		cmdRun(&cmd);
@@ -377,7 +366,7 @@ step(
 
 int
 main() {
-	BuildMode buildMode = BuildMode_Debug;
+	Builder builder = newBuilder(BuildMode_Debug);
 
 	cstring sdlSources[] = {
 		"code/SDL/src/atomic/*.c",
@@ -413,7 +402,18 @@ main() {
 	 	"-DSDL_JOYSTICK_DISABLED",
 	};
 
-	CompileCmd sdlCmd = step("SDL", buildMode, BuildKind_Lib, sdlSources, arrLen(sdlSources), sdlFlags, arrLen(sdlFlags), 0, 0);
+	Step sdlStep = {
+		.name = "SDL",
+		.kind = BuildKind_Lib,
+		.sources = sdlSources,
+		.sourcesLen = arrLen(sdlSources),
+		.flags = sdlFlags,
+		.flagsLen = arrLen(sdlFlags),
+		.link = 0,
+		.linkLen = 0,
+	};
+
+	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
 	cstring wiredeckSources[] = {"code/wiredeck.c"};
 	cstring wiredeckLink[] = {
@@ -424,12 +424,18 @@ main() {
 		#endif
 	};
 
-	step(
-		"wiredeck", buildMode, BuildKind_Exe,
-		wiredeckSources, arrLen(wiredeckSources),
-		0, 0,
-		wiredeckLink, arrLen(wiredeckLink)
-	);
+	Step wiredeckStep = {
+		.name = "wiredeck",
+		.kind = BuildKind_Exe,
+		.sources = wiredeckSources,
+		.sourcesLen = arrLen(wiredeckSources),
+		.flags = 0,
+		.flagsLen = 0,
+		.link = wiredeckLink,
+		.linkLen = arrLen(wiredeckLink),
+	};
+
+	execStep(builder, wiredeckStep);
 
 	return 0;
 }
