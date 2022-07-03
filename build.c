@@ -212,7 +212,7 @@ constructCompileCommand(Builder builder, Step step) {
 
 		if (step.linkLen > 0) {
 			#if PLATFORM_WINDOWS
-				dynCStringPush(&cmdBuilder, "/link /incremental:no ");
+				dynCStringPush(&cmdBuilder, "/link /incremental:no /subsystem:windows ");
 			#endif
 		}
 
@@ -389,6 +389,7 @@ main() {
 			"code/SDL/src/timer/windows/*.c",
 			"code/SDL/src/video/windows/*.c",
 			"code/SDL/src/loadso/windows/*.c",
+			"code/SDL/src/main/windows/*.c",
 		#endif
 	};
 
@@ -417,11 +418,6 @@ main() {
 	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
 	cstring wiredeckSources[] = {"code/wiredeck.c"};
-	cstring wiredeckFlags[] = {
-		#if PLATFORM_WINDOWS
-			"-DPLATFORM_WINDOWS",
-		#endif
-	};
 	cstring wiredeckLink[] = {
 		sdlCmd.outPath,
 		#if PLATFORM_WINDOWS
@@ -435,8 +431,8 @@ main() {
 		.kind = BuildKind_Exe,
 		.sources = wiredeckSources,
 		.sourcesLen = arrLen(wiredeckSources),
-		.flags = wiredeckFlags,
-		.flagsLen = arrLen(wiredeckFlags),
+		.flags = 0,
+		.flagsLen = 0,
 		.link = wiredeckLink,
 		.linkLen = arrLen(wiredeckLink),
 	};
