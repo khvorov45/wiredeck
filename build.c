@@ -417,7 +417,13 @@ main() {
 
 	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
+	// TODO(khvorov) Check if #inlcude files changed in any of the sources
 	cstring wiredeckSources[] = {"code/wiredeck.c"};
+
+	#if PLATFORM_WINDOWS
+		cstring wiredeckFlags[] = {"/W2"};
+	#endif
+
 	cstring wiredeckLink[] = {
 		sdlCmd.outPath,
 		#if PLATFORM_WINDOWS
@@ -431,8 +437,8 @@ main() {
 		.kind = BuildKind_Exe,
 		.sources = wiredeckSources,
 		.sourcesLen = arrLen(wiredeckSources),
-		.flags = 0,
-		.flagsLen = 0,
+		.flags = wiredeckFlags,
+		.flagsLen = arrLen(wiredeckFlags),
 		.link = wiredeckLink,
 		.linkLen = arrLen(wiredeckLink),
 	};
