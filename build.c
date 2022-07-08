@@ -403,6 +403,8 @@ main() {
 		"code/SDL/src/render/*.c",
 		"code/SDL/src/render/software/*.c",
 		"code/SDL/src/cpuinfo/*.c",
+		"code/SDL/src/timer/*.c",
+		"code/SDL/src/thread/*.c",
 		"code/SDL/src/*.c",
 		#if PLATFORM_WINDOWS
 			"code/SDL/src/core/windows/*.c",
@@ -410,6 +412,8 @@ main() {
 			"code/SDL/src/video/windows/*.c",
 			"code/SDL/src/loadso/windows/*.c",
 			"code/SDL/src/main/windows/*.c",
+			"code/SDL/src/timer/windows/*.c",
+			"code/SDL/src/thread/windows/*.c",
 		#endif
 	};
 
@@ -419,8 +423,6 @@ main() {
 	 	"-DSDL_HAPTIC_DISABLED",
 	 	"-DSDL_HIDAPI_DISABLED",
 	 	"-DSDL_SENSOR_DISABLED",
-	 	"-DSDL_THREADS_DISABLED",
-	 	"-DSDL_TIMERS_DISABLED",
 	 	"-DSDL_JOYSTICK_DISABLED",
 	};
 
@@ -439,11 +441,16 @@ main() {
 
 	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
-	cstring wiredeckSources[] = {"code/wiredeck.c"};
+	cstring wiredeckSources[] = {"code/wiredeck.cpp"};
 
-	#if PLATFORM_WINDOWS
-		cstring wiredeckFlags[] = {"/W2"};
-	#endif
+		cstring wiredeckFlags[] = {
+			"-Icode/imgui",
+			"-Icode/imgui/backends",
+			"-Icode/SDL/include",
+			#if PLATFORM_WINDOWS
+				"/W2",
+			#endif
+		};
 
 	cstring wiredeckLink[] = {
 		sdlCmd.outPath,
@@ -453,7 +460,7 @@ main() {
 		#endif
 	};
 
-	cstring wiredeckExtraWatch[] = {"code/*.c", "code/*.h"};
+	cstring wiredeckExtraWatch[] = {"code/*.c", "code/*.h", "code/*.cpp", "code/imgui/*", "code/imgui/backends/*"};
 
 	Step wiredeckStep = {
 		.name = "wiredeck",
