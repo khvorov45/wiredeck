@@ -52,6 +52,7 @@ typedef struct CompileCmd {
 	cstring outPath;
 	cstring libCmd;
 	cstring objDir;
+	cstring pdbPath;
 } CompileCmd;
 
 typedef struct Builder {
@@ -153,32 +154,36 @@ constructCompileCommand(Builder builder, Step step) {
 	case BuildMode_Debug: dynCStringPush(&cmdBuilder, debugFlags); break;
 	}
 
+	cstring pdbPath = 0;
+
 	#if PLATFORM_WINDOWS
+
+		// NOTE(khvorov) obj output
 		dynCStringPush(&cmdBuilder, "/Fo");
-		dynCStringPush(&cmdBuilder, builder.outDir);
-		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, step.name);
-		dynCStringPush(&cmdBuilder, "/ ");
-
-		dynCStringPush(&cmdBuilder, "/Fd");
-
 		dynCStringMark(&cmdBuilder);
 		dynCStringPush(&cmdBuilder, builder.outDir);
 		dynCStringPush(&cmdBuilder, "/");
 		dynCStringPush(&cmdBuilder, step.name);
 		cstring objDir = dynCStringCloneCstringFromMarker(&cmdBuilder);
+		dynCStringPush(&cmdBuilder, "/ ");
 
+		// NOTE(khvorov) pdb output
+		dynCStringPush(&cmdBuilder, "/Fd");
+		dynCStringMark(&cmdBuilder);
+		dynCStringPush(&cmdBuilder, builder.outDir);
+		dynCStringPush(&cmdBuilder, "/");
+		dynCStringPush(&cmdBuilder, step.name);
 		dynCStringPush(&cmdBuilder, ".pdb ");
+		pdbPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
 
+		// NOTE(khvorov) exe output
 		dynCStringPush(&cmdBuilder, "/Fe");
-
 		dynCStringMark(&cmdBuilder);
 		dynCStringPush(&cmdBuilder, builder.outDir);
 		dynCStringPush(&cmdBuilder, "/");
 		dynCStringPush(&cmdBuilder, step.name);
 		dynCStringPush(&cmdBuilder, ".exe");
 		cstring outPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
-
 		dynCStringPush(&cmdBuilder, " ");
 	#endif
 
@@ -233,6 +238,7 @@ constructCompileCommand(Builder builder, Step step) {
 		.outPath = outPath,
 		.libCmd = libCmd,
 		.objDir = objDir,
+		.pdbPath = pdbPath,
 	};
 	return result;
 }
@@ -347,6 +353,15 @@ cmdRun(CompileCmd* cmd) {
 	}
 }
 
+void
+removeFileIfExists(cstring path) {
+	if (path) {
+		#if PLATFORM_WINDOWS
+			DeleteFileA(path);
+		#endif
+	}
+}
+
 CompileCmd
 execStep(Builder builder, Step step) {
 	CompileCmd cmd = constructCompileCommand(builder, step);
@@ -359,6 +374,8 @@ execStep(Builder builder, Step step) {
 	if (inTime > outTime || depTime > outTime || extraTime > outTime) {
 		createDirIfNotExists(builder.outDir);
 		clearDir(cmd.objDir);
+		removeFileIfExists(cmd.outPath);
+		removeFileIfExists(cmd.pdbPath);
 		cmdRunLog(&cmd);
 		cmdRun(&cmd);
 	} else {
