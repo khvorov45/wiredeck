@@ -68,6 +68,8 @@ typedef struct Step {
 	i32 flagsLen;
 	cstring* link;
 	i32 linkLen;
+	cstring* extraWatch;
+	i32 extraWatchLen;
 } Step;
 
 i32
@@ -272,12 +274,12 @@ cmdNoRunLog(CompileCmd* cmd) {
 }
 
 u64
-getLastModified(cstring path) {
+getLastModifiedFromPattern(cstring pattern) {
 	u64 result = 0;
 
 	#if PLATFORM_WINDOWS
 		WIN32_FIND_DATAA findData;
-		HANDLE firstHandle = FindFirstFileA(path, &findData);
+		HANDLE firstHandle = FindFirstFileA(pattern, &findData);
 		if (firstHandle != INVALID_HANDLE_VALUE) {
 
 			u64 thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
@@ -294,11 +296,11 @@ getLastModified(cstring path) {
 }
 
 u64
-getLastModifiedSource(cstring* sources, i32 sourcesLen) {
+getLastModifiedFromPatterns(cstring* patterns, i32 patternsLen) {
 	u64 result = 0;
-	for (i32 srcIndex = 0; srcIndex < sourcesLen; srcIndex++) {
-		cstring src = sources[srcIndex];
-		u64 thisLastMod = getLastModified(src);
+	for (i32 patIndex = 0; patIndex < patternsLen; patIndex++) {
+		cstring pattern = patterns[patIndex];
+		u64 thisLastMod = getLastModifiedFromPattern(pattern);
 		result = max(result, thisLastMod);
 	}
 	return result;
@@ -310,8 +312,8 @@ newBuilder(BuildMode mode) {
 	outDirs[BuildMode_Debug] = "build-debug";
 	char* outDir = outDirs[mode];
 
-	u64 buildFileTime = getLastModified(__FILE__);
-	u64 outDirCreateTime = getLastModified(outDir);
+	u64 buildFileTime = getLastModifiedFromPattern(__FILE__);
+	u64 outDirCreateTime = getLastModifiedFromPattern(outDir);
 
 	if (buildFileTime > outDirCreateTime) {
 		clearDir(outDir);
@@ -349,11 +351,12 @@ CompileCmd
 execStep(Builder builder, Step step) {
 	CompileCmd cmd = constructCompileCommand(builder, step);
 
-	u64 outTime = getLastModified(cmd.outPath);
-	u64 inTime = getLastModifiedSource(step.sources, step.sourcesLen);
-	u64 depTime = getLastModifiedSource(step.link, step.linkLen);
+	u64 outTime = getLastModifiedFromPattern(cmd.outPath);
+	u64 inTime = getLastModifiedFromPatterns(step.sources, step.sourcesLen);
+	u64 depTime = getLastModifiedFromPatterns(step.link, step.linkLen);
+	u64 extraTime = getLastModifiedFromPatterns(step.extraWatch, step.extraWatchLen);
 
-	if (inTime > outTime || depTime > outTime) {
+	if (inTime > outTime || depTime > outTime || extraTime > outTime) {
 		createDirIfNotExists(builder.outDir);
 		clearDir(cmd.objDir);
 		cmdRunLog(&cmd);
@@ -413,11 +416,12 @@ main() {
 		.flagsLen = arrLen(sdlFlags),
 		.link = 0,
 		.linkLen = 0,
+		.extraWatch = 0,
+		.extraWatchLen = 0,
 	};
 
 	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
-	// TODO(khvorov) Check if #inlcude files changed in any of the sources
 	cstring wiredeckSources[] = {"code/wiredeck.c"};
 
 	#if PLATFORM_WINDOWS
@@ -432,6 +436,8 @@ main() {
 		#endif
 	};
 
+	cstring wiredeckExtraWatch[] = {"code/*.c", "code/*.h"};
+
 	Step wiredeckStep = {
 		.name = "wiredeck",
 		.kind = BuildKind_Exe,
@@ -441,6 +447,8 @@ main() {
 		.flagsLen = arrLen(wiredeckFlags),
 		.link = wiredeckLink,
 		.linkLen = arrLen(wiredeckLink),
+		.extraWatch = wiredeckExtraWatch,
+		.extraWatchLen = arrLen(wiredeckExtraWatch),
 	};
 
 	execStep(builder, wiredeckStep);
