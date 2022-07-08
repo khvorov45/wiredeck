@@ -61,6 +61,12 @@ SDL_main(int argc, char* argv[]) {
 			SDL_Renderer* sdlRenderer = SDL_CreateRenderer(window, -1, 0);
 			if (sdlRenderer) {
 
+				// NOTE(khvorov) SDL by default does not send mouse clicks when clicking on an unfocused window
+				{
+					i32 clickthrough = 1;
+					SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, (u8*)&clickthrough);
+				}
+
 				mu_Context* ui = SDL_malloc(sizeof(mu_Context));
 				mu_init(ui);
 				ui->text_width = getTextWidth;
