@@ -19,7 +19,7 @@ typedef float f32;
 
 void
 processEvent(SDL_Window* window, SDL_Event* event, i32* eventCount, b32* running) {
-    ImGui_ImplSDL2_ProcessEvent(event);
+	ImGui_ImplSDL2_ProcessEvent(event);
 	if (event->type == SDL_QUIT) {
 		*running = false;
 	}
@@ -60,6 +60,7 @@ SDL_main(int argc, char* argv[]) {
 				ImGui::CreateContext();
 				ImGuiIO& io = ImGui::GetIO(); (void)io;
 				io.IniFilename = 0;
+				io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
 				ImGui::StyleColorsDark();
 
@@ -93,6 +94,13 @@ SDL_main(int argc, char* argv[]) {
 					ImGui::NewFrame();
 
 					ImGui::ShowDemoWindow(0);
+
+					{
+						ImGui::Begin("Hello, world!");
+						ImGui::Text("This is some useful text.");
+						ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+						ImGui::End();
+					}
 
 					ImGui::Render();
 
