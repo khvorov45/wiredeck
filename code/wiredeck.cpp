@@ -61,7 +61,7 @@ SDL_main(int argc, char* argv[]) {
 				IMGUI_CHECKVERSION();
 				ImGui::CreateContext();
 				ImGuiIO& io = ImGui::GetIO(); (void)io;
-				io.IniFilename = 0;
+				io.IniFilename = "temp.ini";
 				io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 				io.Fonts->AddFontFromMemoryCompressedTTF(EmbeddedMonospaceFont_compressed_data, EmbeddedMonospaceFont_compressed_size, 16, 0, 0);
 
@@ -96,14 +96,9 @@ SDL_main(int argc, char* argv[]) {
 					ImGui_ImplSDL2_NewFrame();
 					ImGui::NewFrame();
 
-					ImGui::ShowDemoWindow(0);
+					ImGuiID rootDockID = ImGui::DockSpaceOverViewport(0, ImGuiDockNodeFlags_NoDockingInCentralNode);
 
-					{
-						ImGui::Begin("Hello, world!");
-						ImGui::Text("This is some useful text.");
-						ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-						ImGui::End();
-					}
+					ImGui::ShowDemoWindow(0);
 
 					ImGui::Render();
 
