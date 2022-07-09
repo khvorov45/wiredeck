@@ -8,6 +8,7 @@
 #include "imgui_impl_sdl.cpp"
 #include "imgui_impl_sdlrenderer.cpp"
 #include "imgui_freetype.cpp"
+#include "EmbeddedMonospaceFont.cpp"
 
 #define true 1
 #define false 0
@@ -62,6 +63,7 @@ SDL_main(int argc, char* argv[]) {
 				ImGuiIO& io = ImGui::GetIO(); (void)io;
 				io.IniFilename = 0;
 				io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+				io.Fonts->AddFontFromMemoryCompressedTTF(EmbeddedMonospaceFont_compressed_data, EmbeddedMonospaceFont_compressed_size, 16, 0, 0);
 
 				ImGui::StyleColorsDark();
 
