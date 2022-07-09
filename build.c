@@ -499,7 +499,8 @@ main() {
 		"code/freetype/src/psnames/psnames.c",
 	};
 
-	cstring freetypeFlags[] = {"-Icode/freetype/include", "-DFT2_BUILD_LIBRARY"};
+	cstring freetypeIncludeFlag = "-Icode/freetype/include";
+	cstring freetypeFlags[] = {freetypeIncludeFlag, "-DFT2_BUILD_LIBRARY"};
 
 	Step freetypeStep = {
 		.name = "freetype",
@@ -521,6 +522,8 @@ main() {
 		cstring wiredeckFlags[] = {
 			"-Icode/imgui",
 			"-Icode/imgui/backends",
+			"-Icode/imgui/misc/freetype",
+			freetypeIncludeFlag,
 			"-Icode/SDL/include",
 			#if PLATFORM_WINDOWS
 				"/W2",

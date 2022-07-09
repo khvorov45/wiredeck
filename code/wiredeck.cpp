@@ -7,6 +7,7 @@
 #include "imgui_tables.cpp"
 #include "imgui_impl_sdl.cpp"
 #include "imgui_impl_sdlrenderer.cpp"
+#include "imgui_freetype.cpp"
 
 #define true 1
 #define false 0
