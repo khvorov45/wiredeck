@@ -420,10 +420,10 @@ main() {
 	cstring sdlFlags[] = {
 		"-Icode/SDL/include",
 		"-DSDL_AUDIO_DISABLED",
-	 	"-DSDL_HAPTIC_DISABLED",
-	 	"-DSDL_HIDAPI_DISABLED",
-	 	"-DSDL_SENSOR_DISABLED",
-	 	"-DSDL_JOYSTICK_DISABLED",
+		"-DSDL_HAPTIC_DISABLED",
+		"-DSDL_HIDAPI_DISABLED",
+		"-DSDL_SENSOR_DISABLED",
+		"-DSDL_JOYSTICK_DISABLED",
 	};
 
 	Step sdlStep = {
@@ -441,6 +441,81 @@ main() {
 
 	CompileCmd sdlCmd = execStep(builder, sdlStep);
 
+	cstring freetypeSources[] = {
+		// Required
+		"code/freetype/src/base/ftsystem.c",
+		"code/freetype/src/base/ftinit.c",
+		"code/freetype/src/base/ftdebug.c",
+		"code/freetype/src/base/ftbase.c",
+
+		// Recommended
+		"code/freetype/src/base/ftbbox.c",
+		"code/freetype/src/base/ftglyph.c",
+
+		// Optional
+		"code/freetype/src/base/ftbdf.c",
+		"code/freetype/src/base/ftbitmap.c",
+		"code/freetype/src/base/ftcid.c",
+		"code/freetype/src/base/ftfstype.c",
+		"code/freetype/src/base/ftgasp.c",
+		"code/freetype/src/base/ftgxval.c",
+		"code/freetype/src/base/ftmm.c",
+		"code/freetype/src/base/ftotval.c",
+		"code/freetype/src/base/ftpatent.c",
+		"code/freetype/src/base/ftpfr.c",
+		"code/freetype/src/base/ftstroke.c",
+		"code/freetype/src/base/ftsynth.c",
+		"code/freetype/src/base/fttype1.c",
+		"code/freetype/src/base/ftwinfnt.c",
+
+		// Font drivers
+		"code/freetype/src/bdf/bdf.c",
+		"code/freetype/src/cff/cff.c",
+		"code/freetype/src/cid/type1cid.c",
+		"code/freetype/src/pcf/pcf.c",
+		"code/freetype/src/pfr/pfr.c",
+		"code/freetype/src/sfnt/sfnt.c",
+		"code/freetype/src/truetype/truetype.c",
+		"code/freetype/src/type1/type1.c",
+		"code/freetype/src/type42/type42.c",
+		"code/freetype/src/winfonts/winfnt.c",
+
+		// Rasterisers
+		"code/freetype/src/raster/raster.c",
+		"code/freetype/src/sdf/sdf.c",
+		"code/freetype/src/smooth/smooth.c",
+		"code/freetype/src/svg/svg.c",
+
+		// Auxillary
+		"code/freetype/src/autofit/autofit.c",
+		"code/freetype/src/cache/ftcache.c",
+		"code/freetype/src/gzip/ftgzip.c",
+		"code/freetype/src/lzw/ftlzw.c",
+		"code/freetype/src/bzip2/ftbzip2.c",
+		"code/freetype/src/gxvalid/gxvalid.c",
+		"code/freetype/src/otvalid/otvalid.c",
+		"code/freetype/src/psaux/psaux.c",
+		"code/freetype/src/pshinter/pshinter.c",
+		"code/freetype/src/psnames/psnames.c",
+	};
+
+	cstring freetypeFlags[] = {"-Icode/freetype/include", "-DFT2_BUILD_LIBRARY"};
+
+	Step freetypeStep = {
+		.name = "freetype",
+		.kind = BuildKind_Lib,
+		.sources = freetypeSources,
+		.sourcesLen = arrLen(freetypeSources),
+		.flags = freetypeFlags,
+		.flagsLen = arrLen(freetypeFlags),
+		.link = 0,
+		.linkLen = 0,
+		.extraWatch = 0,
+		.extraWatchLen = 0,
+	};
+
+	CompileCmd freetypeCmd = execStep(builder, freetypeStep);
+
 	cstring wiredeckSources[] = {"code/wiredeck.cpp"};
 
 		cstring wiredeckFlags[] = {
@@ -454,6 +529,7 @@ main() {
 
 	cstring wiredeckLink[] = {
 		sdlCmd.outPath,
+		freetypeCmd.outPath,
 		#if PLATFORM_WINDOWS
 		"Ole32.lib", "Advapi32.lib", "Winmm.lib", "User32.lib", "Gdi32.lib",
 		"OleAut32.lib", "Imm32.lib", "Shell32.lib", "Version.lib",
