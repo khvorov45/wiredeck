@@ -46,7 +46,7 @@ SDL_main(int argc, char* argv[]) {
 		// NOTE(khvorov) I would like to clear the window before it shows up
 		// at all but I haven't found a way to do that on Windows and have
 		// the window work as expected.
-		SDL_Window* sdlWindow = SDL_CreateWindow("wiredeck", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1000, 1000, 0);
+		SDL_Window* sdlWindow = SDL_CreateWindow("wiredeck", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1000, 1000, SDL_WINDOW_RESIZABLE);
 		if (sdlWindow) {
 
 			SDL_Renderer* sdlRenderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RENDERER_PRESENTVSYNC);
