@@ -96,9 +96,15 @@ SDL_main(int argc, char* argv[]) {
 					ImGui_ImplSDL2_NewFrame();
 					ImGui::NewFrame();
 
-					ImGuiID rootDockID = ImGui::DockSpaceOverViewport(0, ImGuiDockNodeFlags_NoDockingInCentralNode);
+					ImGuiID rootDockID = ImGui::DockSpaceOverViewport(0, ImGuiDockNodeFlags_PassthruCentralNode);
 
 					ImGui::ShowDemoWindow(0);
+
+					ImGui::Begin("Test", 0, ImGuiWindowFlags_NoMove);
+					ImGui::End();
+
+					ImGui::Begin("Test2");
+					ImGui::End();
 
 					ImGui::Render();
 
