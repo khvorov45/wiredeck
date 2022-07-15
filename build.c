@@ -517,7 +517,7 @@ main() {
 
 	CompileCmd freetypeCmd = execStep(builder, freetypeStep);
 
-	cstring wiredeckSources[] = {"code/wiredeck.cpp"};
+	cstring wiredeckSources[] = {"code/wiredeck.c"};
 
 		cstring wiredeckFlags[] = {
 			"-Icode/imgui",
@@ -539,7 +539,7 @@ main() {
 		#endif
 	};
 
-	cstring wiredeckExtraWatch[] = {"code/*.c", "code/*.h", "code/*.cpp", "code/imgui/*", "code/imgui/backends/*"};
+	cstring wiredeckExtraWatch[] = {"code/*.c", "code/*.h"};
 
 	Step wiredeckStep = {
 		.name = "wiredeck",
