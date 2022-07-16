@@ -40,7 +40,13 @@ typedef struct UIWindow {
 	i32 dragOffsetFromTopleftY;
 } UIWindow;
 
+typedef enum DockPos {
+	DockPos_Center,
+	DockPos_Count,
+} DockPos;
+
 typedef struct UI {
+	i32 width, height;
 	UIWindowID windowOrder[UIWindowID_Count];
 	UIWindow windows[UIWindowID_Count];
 } UI;
@@ -74,6 +80,12 @@ pointInRect(i32 pointX, i32 pointY, SDL_Rect rect) {
 	return result;
 }
 
+SDL_Rect
+rectCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
+	SDL_Rect result = {.x = centerX - dimX / 2, .y = centerY - dimY / 2, .w = dimX, .h = dimY};
+	return result;
+}
+
 void
 clearHalfTransitionCounts(Input* input) {
 	for (i32 keyIndex = 0; keyIndex < InputKeyID_Count; keyIndex += 1) {
@@ -104,6 +116,11 @@ wasUnpressed(Input* input, InputKeyID keyID) {
 }
 
 void
+uiGetRootDockRects(UI* ui, SDL_Rect* rects) {
+	rects[DockPos_Center] = rectCenterDim(ui->width / 2, ui->height / 2, 100, 100);
+}
+
+void
 uiMoveWindowToFront(UI* ui, UIWindowID winID) {
 	i32 winOrderIndex = 0;
 	for (; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
@@ -131,7 +148,23 @@ uiWindowUpdate(UI* ui, UIWindowID winID, Input* input) {
 		win->color.b = 255;
 		uiMoveWindowToFront(ui, winID);
 
-	} else if (wasUnpressed(input, InputKeyID_MouseLeft)) {
+	} else if (wasUnpressed(input, InputKeyID_MouseLeft) && win->isDragged) {
+
+		SDL_Rect rootDockRects[DockPos_Count];
+		uiGetRootDockRects(ui, rootDockRects);
+		for (DockPos pos = 0; pos < DockPos_Count; pos++) {
+			SDL_Rect rect = rootDockRects[pos];
+			if (pointInRect(input->cursorX, input->cursorY, rect)) {
+				switch (pos) {
+				case DockPos_Center: {
+					win->rect.x = 0;
+					win->rect.y = 0;
+					win->rect.w = ui->width;
+					win->rect.h = ui->height;
+				} break;
+				}
+			}
+		}
 
 		win->isDragged = false;
 		win->dragOffsetFromTopleftX = 0;
@@ -225,6 +258,13 @@ SDL_main(int argc, char* argv[]) {
 					processEvent(sdlWindow, &event, &running, &input);
 					pollEvents(sdlWindow, &running, &input);
 
+					{
+						SDL_Rect viewport;
+						SDL_RenderGetViewport(sdlRenderer, &viewport);
+						ui.width = viewport.w;
+						ui.height = viewport.h;
+					}
+
 					SDL_SetRenderDrawColor(sdlRenderer, 20, 20, 20, 255);
 					SDL_RenderClear(sdlRenderer);
 
@@ -235,6 +275,14 @@ SDL_main(int argc, char* argv[]) {
 					for (i32 winOrderIndex = 0; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
 						UIWindowID winID = ui.windowOrder[winOrderIndex];
 						drawRect(sdlRenderer, ui.windows[winID].rect, ui.windows[winID].color);
+					}
+
+					SDL_Color dockRectColor = {.r = 0, .g = 0, .b = 255, .a = 255};
+					SDL_Rect rootDockRects[DockPos_Count];
+					uiGetRootDockRects(&ui, rootDockRects);
+					for (DockPos pos = 0; pos < DockPos_Count; pos++) {
+						SDL_Rect rect = rootDockRects[pos];
+						drawRect(sdlRenderer, rect, dockRectColor);
 					}
 
 					SDL_RenderPresent(sdlRenderer);
