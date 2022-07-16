@@ -26,6 +26,12 @@ typedef struct Input {
 	i32 cursorY;
 } Input;
 
+typedef enum UIWindowID {
+	UIWindowID_1,
+	UIWindowID_2,
+	UIWindowID_Count,
+} UIWindowID;
+
 typedef struct UIWindow {
 	SDL_Rect rect;
 	SDL_Color color;
@@ -33,6 +39,30 @@ typedef struct UIWindow {
 	i32 dragOffsetFromTopleftX;
 	i32 dragOffsetFromTopleftY;
 } UIWindow;
+
+typedef struct UI {
+	UIWindowID windowOrder[UIWindowID_Count];
+	UIWindow windows[UIWindowID_Count];
+} UI;
+
+void
+uiInit(UI* ui) {
+	SDL_memset(ui, 0, sizeof(UI));
+
+	for (i32 id = 0; id < UIWindowID_Count; id += 1) {
+		ui->windowOrder[id] = id;
+	}
+
+	{
+		UIWindow win = {.rect = {.x = 0, .y = 0, .w = 200, .h = 100}, .color = {.r = 255, .g = 0, .b = 0, .a = 255}};
+		ui->windows[UIWindowID_1] = win;
+	}
+
+	{
+		UIWindow win = {.rect = {.x = 100, .y = 100, .w = 100, .h = 200}, .color = {.r = 0, .g = 255, .b = 0, .a = 255}};
+		ui->windows[UIWindowID_2] = win;
+	}
+}
 
 b32
 pointInRect(i32 pointX, i32 pointY, SDL_Rect rect) {
@@ -74,15 +104,39 @@ wasUnpressed(Input* input, InputKeyID keyID) {
 }
 
 void
-uiWindowUpdate(UIWindow* win, Input* input) {
+uiMoveWindowToFront(UI* ui, UIWindowID winID) {
+	i32 winOrderIndex = 0;
+	for (; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
+		if (ui->windowOrder[winOrderIndex] == winID) {
+			break;
+		}
+	}
+
+	for (; winOrderIndex < UIWindowID_Count - 1; winOrderIndex++) {
+		ui->windowOrder[winOrderIndex] = ui->windowOrder[winOrderIndex + 1];
+		ui->windowOrder[winOrderIndex + 1] = winID;
+	}
+}
+
+void
+uiWindowUpdate(UI* ui, UIWindowID winID, Input* input) {
+
+	UIWindow* win = ui->windows + winID;
+
 	if (wasPressed(input, InputKeyID_MouseLeft) && pointInRect(input->cursorX, input->cursorY, win->rect)) {
+
 		win->isDragged = true;
 		win->dragOffsetFromTopleftX = input->cursorX - win->rect.x;
 		win->dragOffsetFromTopleftY = input->cursorY - win->rect.y;
+		win->color.b = 255;
+		uiMoveWindowToFront(ui, winID);
+
 	} else if (wasUnpressed(input, InputKeyID_MouseLeft)) {
+
 		win->isDragged = false;
 		win->dragOffsetFromTopleftX = 0;
 		win->dragOffsetFromTopleftY = 0;
+		win->color.b = 0;
 	}
 
 	if (win->isDragged) {
@@ -98,7 +152,7 @@ drawRect(SDL_Renderer* sdlRenderer, SDL_Rect rect, SDL_Color color) {
 }
 
 void
-processEvent(SDL_Window* window, SDL_Event* event, i32* eventCount, b32* running, Input* input) {
+processEvent(SDL_Window* window, SDL_Event* event, b32* running, Input* input) {
 
 	switch (event->type) {
 	case SDL_QUIT: {*running = false;} break;
@@ -125,15 +179,13 @@ processEvent(SDL_Window* window, SDL_Event* event, i32* eventCount, b32* running
 		}
 	}
 	}
-
-	(*eventCount)++;
 }
 
 void
-pollEvents(SDL_Window* window, i32* eventCount, b32* running, Input* input) {
+pollEvents(SDL_Window* window, b32* running, Input* input) {
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
-		processEvent(window, &event, eventCount, running, input);
+		processEvent(window, &event, running, input);
 	}
 }
 
@@ -160,34 +212,30 @@ SDL_main(int argc, char* argv[]) {
 				input.cursorX = -1;
 				input.cursorY = -1;
 
-				UIWindow uiWindow1 = {.rect = {.x = 0, .y = 0, .w = 200, .h = 100}, .color = {.r = 255, .g = 0, .b = 0, .a = 255}};
-				UIWindow uiWindow2 = {.rect = {.x = 100, .y = 100, .w = 100, .h = 200}, .color = {.r = 0, .g = 255, .b = 0, .a = 255}};
+				UI ui = {0};
+				uiInit(&ui);
 
 				b32 running = true;
-				b32 canWaitOnInput = true;
 				while (running) {
 
 					clearHalfTransitionCounts(&input);
 
-					i32 eventCount = 0;
 					SDL_Event event;
-					i32 framesToDrawWithoutEvents = 0;
-					if (!canWaitOnInput) {
-						pollEvents(sdlWindow, &eventCount, &running, &input);
-					} else {
-						SDL_WaitEvent(&event);
-						processEvent(sdlWindow, &event, &eventCount, &running, &input);
-						pollEvents(sdlWindow, &eventCount, &running, &input);
-					}
+					SDL_WaitEvent(&event);
+					processEvent(sdlWindow, &event, &running, &input);
+					pollEvents(sdlWindow, &running, &input);
 
 					SDL_SetRenderDrawColor(sdlRenderer, 20, 20, 20, 255);
 					SDL_RenderClear(sdlRenderer);
 
-					uiWindowUpdate(&uiWindow1, &input);
-					drawRect(sdlRenderer, uiWindow1.rect, uiWindow1.color);
+					for (UIWindowID winID = 0; winID < UIWindowID_Count; winID++) {
+						uiWindowUpdate(&ui, winID, &input);
+					}
 
-					uiWindowUpdate(&uiWindow2, &input);
-					drawRect(sdlRenderer, uiWindow2.rect, uiWindow2.color);
+					for (i32 winOrderIndex = 0; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
+						UIWindowID winID = ui.windowOrder[winOrderIndex];
+						drawRect(sdlRenderer, ui.windows[winID].rect, ui.windows[winID].color);
+					}
 
 					SDL_RenderPresent(sdlRenderer);
 				}
