@@ -47,7 +47,7 @@ typedef enum DockPos {
 
 typedef struct UI {
 	i32 width, height;
-	UIWindowID windowOrder[UIWindowID_Count];
+	UIWindowID windowOrder[UIWindowID_Count]; // NOTE(khvorov) First window is drawn last (on top)
 	UIWindow windows[UIWindowID_Count];
 } UI;
 
@@ -129,9 +129,11 @@ uiMoveWindowToFront(UI* ui, UIWindowID winID) {
 		}
 	}
 
-	for (; winOrderIndex < UIWindowID_Count - 1; winOrderIndex++) {
-		ui->windowOrder[winOrderIndex] = ui->windowOrder[winOrderIndex + 1];
-		ui->windowOrder[winOrderIndex + 1] = winID;
+	if (winOrderIndex < UIWindowID_Count) {
+		for (; winOrderIndex > 0; winOrderIndex--) {
+			ui->windowOrder[winOrderIndex] = ui->windowOrder[winOrderIndex - 1];
+			ui->windowOrder[winOrderIndex - 1] = winID;
+		}
 	}
 }
 
@@ -147,6 +149,8 @@ uiWindowUpdate(UI* ui, UIWindowID winID, Input* input) {
 		win->dragOffsetFromTopleftY = input->cursorY - win->rect.y;
 		win->color.b = 255;
 		uiMoveWindowToFront(ui, winID);
+
+		input->keys[InputKeyID_MouseLeft].halfTransitionCount = 0;
 
 	} else if (wasUnpressed(input, InputKeyID_MouseLeft) && win->isDragged) {
 
@@ -268,11 +272,19 @@ SDL_main(int argc, char* argv[]) {
 					SDL_SetRenderDrawColor(sdlRenderer, 20, 20, 20, 255);
 					SDL_RenderClear(sdlRenderer);
 
-					for (UIWindowID winID = 0; winID < UIWindowID_Count; winID++) {
-						uiWindowUpdate(&ui, winID, &input);
+					{
+						UIWindowID windowOrder[UIWindowID_Count];
+						for (i32 winOrderIndex = 0; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
+							windowOrder[winOrderIndex] = ui.windowOrder[winOrderIndex];
+						}
+
+						for (i32 winOrderIndex = 0; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
+							UIWindowID winID = windowOrder[winOrderIndex];
+							uiWindowUpdate(&ui, winID, &input);
+						}
 					}
 
-					for (i32 winOrderIndex = 0; winOrderIndex < UIWindowID_Count; winOrderIndex++) {
+					for (i32 winOrderIndex = UIWindowID_Count - 1; winOrderIndex >= 0; winOrderIndex--) {
 						UIWindowID winID = ui.windowOrder[winOrderIndex];
 						drawRect(sdlRenderer, ui.windows[winID].rect, ui.windows[winID].color);
 					}
