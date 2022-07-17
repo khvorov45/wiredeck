@@ -371,6 +371,8 @@ execStep(Builder builder, Step step) {
 	u64 depTime = getLastModifiedFromPatterns(step.link, step.linkLen);
 	u64 extraTime = getLastModifiedFromPatterns(step.extraWatch, step.extraWatchLen);
 
+	printf("\n\n");
+
 	if (inTime > outTime || depTime > outTime || extraTime > outTime) {
 		createDirIfNotExists(builder.outDir);
 		clearDir(cmd.objDir);
