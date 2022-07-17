@@ -519,16 +519,19 @@ main() {
 
 	cstring wiredeckSources[] = {"code/wiredeck.c"};
 
-		cstring wiredeckFlags[] = {
-			"-Icode/imgui",
-			"-Icode/imgui/backends",
-			"-Icode/imgui/misc/freetype",
-			freetypeIncludeFlag,
-			"-Icode/SDL/include",
-			#if PLATFORM_WINDOWS
-				"/W2",
-			#endif
-		};
+	cstring wiredeckFlags[] = {
+		freetypeIncludeFlag,
+		"-Icode/SDL/include",
+		#if PLATFORM_WINDOWS
+			"/Wall",
+			"/wd4204", // NOTE(khvorov) non-constant aggregate initializer
+			"/wd4100", // NOTE(khvorov) unreferenced formal parameter
+			"/wd4820", // NOTE(khvorov) padding
+			"/wd4255", // NOTE(khvorov) converting () to (void)
+			"/wd5045", // NOTE(khvorov) spectre mitigation
+			"/wd4668" // NOTE(khvorov) not defined as a preprocessor macro
+		#endif
+	};
 
 	cstring wiredeckLink[] = {
 		sdlCmd.outPath,

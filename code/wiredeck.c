@@ -257,8 +257,8 @@ drawRectOutline(SDL_Renderer* sdlRenderer, SDL_Rect rect, SDL_Color color, i32 t
 	SDL_Rect outlineRects[Direction_Count];
 	getOutlineRects(rect, outlineRects, thickness);
 	for (Direction dir = 0; dir < Direction_Count; dir++) {
-		SDL_Rect rect = outlineRects[dir];
-		drawRect(sdlRenderer, rect, color);
+		SDL_Rect outlineRect = outlineRects[dir];
+		drawRect(sdlRenderer, outlineRect, color);
 	}
 }
 
