@@ -26,6 +26,14 @@ typedef struct Input {
 	i32 cursorY;
 } Input;
 
+typedef enum Direction {
+	Direction_Top,
+	Direction_Right,
+	Direction_Bottom,
+	Direction_Left,
+	Direction_Count,
+} Direction;
+
 typedef enum UIWindowID {
 	UIWindowID_1,
 	UIWindowID_2,
@@ -47,6 +55,8 @@ typedef enum DockPos {
 
 typedef struct UI {
 	i32 width, height;
+	i32 windowTopBarHeight;
+	i32 windowBorderThickness;
 	UIWindowID windowOrder[UIWindowID_Count]; // NOTE(khvorov) First window is drawn last (on top)
 	UIWindow windows[UIWindowID_Count];
 } UI;
@@ -68,6 +78,9 @@ uiInit(UI* ui) {
 		UIWindow win = {.rect = {.x = 100, .y = 100, .w = 100, .h = 200}, .color = {.r = 0, .g = 255, .b = 0, .a = 255}};
 		ui->windows[UIWindowID_2] = win;
 	}
+
+	ui->windowTopBarHeight = 20;
+	ui->windowBorderThickness = 2;
 }
 
 b32
@@ -84,6 +97,36 @@ SDL_Rect
 rectCenterDim(i32 centerX, i32 centerY, i32 dimX, i32 dimY) {
 	SDL_Rect result = {.x = centerX - dimX / 2, .y = centerY - dimY / 2, .w = dimX, .h = dimY};
 	return result;
+}
+
+SDL_Rect
+rectShrink(SDL_Rect rect, i32 by) {
+	SDL_Rect result = rect;
+	result.x += by;
+	result.y += by;
+	result.w -= 2 * by;
+	result.h -= 2 * by;
+	return result;
+}
+
+void
+getOutlineRects(SDL_Rect rect, SDL_Rect* rects, i32 thickness) {
+	SDL_Rect top = rect;
+	top.h = thickness;
+
+	SDL_Rect bottom = top;
+	bottom.y += rect.h - thickness;
+
+	SDL_Rect right = rect;
+	right.w = thickness;
+
+	SDL_Rect left = right;
+	left.x += rect.w - thickness;
+
+	rects[Direction_Top] = top;
+	rects[Direction_Bottom] = bottom;
+	rects[Direction_Right] = right;
+	rects[Direction_Left] = left;
 }
 
 void
@@ -137,20 +180,41 @@ uiMoveWindowToFront(UI* ui, UIWindowID winID) {
 	}
 }
 
+SDL_Rect
+uiGetWindowTopbarRect(UI* ui, UIWindowID winID) {
+	SDL_Rect topBarRect = rectShrink(ui->windows[winID].rect, ui->windowBorderThickness);
+	topBarRect.h = ui->windowTopBarHeight;
+	return topBarRect;
+}
+
+SDL_Rect
+uiGetWindowContentRect(UI* ui, UIWindowID winID) {
+	SDL_Rect contentRect = rectShrink(ui->windows[winID].rect, ui->windowBorderThickness);
+	contentRect.h -= ui->windowTopBarHeight;
+	contentRect.y += ui->windowTopBarHeight;
+	return contentRect;
+}
+
 void
 uiWindowUpdate(UI* ui, UIWindowID winID, Input* input) {
 
 	UIWindow* win = ui->windows + winID;
 
-	if (wasPressed(input, InputKeyID_MouseLeft) && pointInRect(input->cursorX, input->cursorY, win->rect)) {
+	if (wasPressed(input, InputKeyID_MouseLeft)) {
 
-		win->isDragged = true;
-		win->dragOffsetFromTopleftX = input->cursorX - win->rect.x;
-		win->dragOffsetFromTopleftY = input->cursorY - win->rect.y;
-		win->color.b = 255;
-		uiMoveWindowToFront(ui, winID);
+		if (pointInRect(input->cursorX, input->cursorY, win->rect)) {
+			uiMoveWindowToFront(ui, winID);
+			input->keys[InputKeyID_MouseLeft].halfTransitionCount = 0;
+		}
 
-		input->keys[InputKeyID_MouseLeft].halfTransitionCount = 0;
+		// NOTE(khvorov) Dragging
+		SDL_Rect windowTopbarRect = uiGetWindowTopbarRect(ui, winID);
+		if (pointInRect(input->cursorX, input->cursorY, windowTopbarRect)) {
+			win->isDragged = true;
+			win->dragOffsetFromTopleftX = input->cursorX - win->rect.x;
+			win->dragOffsetFromTopleftY = input->cursorY - win->rect.y;
+			win->color.b = 255;
+		}
 
 	} else if (wasUnpressed(input, InputKeyID_MouseLeft) && win->isDragged) {
 
@@ -186,6 +250,31 @@ void
 drawRect(SDL_Renderer* sdlRenderer, SDL_Rect rect, SDL_Color color) {
 	SDL_SetRenderDrawColor(sdlRenderer, color.r, color.g, color.b, color.a);
 	SDL_RenderFillRect(sdlRenderer, &rect);
+}
+
+void
+drawRectOutline(SDL_Renderer* sdlRenderer, SDL_Rect rect, SDL_Color color, i32 thickness) {
+	SDL_Rect outlineRects[Direction_Count];
+	getOutlineRects(rect, outlineRects, thickness);
+	for (Direction dir = 0; dir < Direction_Count; dir++) {
+		SDL_Rect rect = outlineRects[dir];
+		drawRect(sdlRenderer, rect, color);
+	}
+}
+
+void
+drawWindow(SDL_Renderer* sdlRenderer, UI* ui, UIWindowID winID) {
+	UIWindow* win = ui->windows + winID;
+
+	SDL_Color windowOutlineColor = {.r = 100, .g = 100, .b = 100, .a = 255};
+	drawRectOutline(sdlRenderer, win->rect, windowOutlineColor, ui->windowBorderThickness);
+
+	SDL_Rect topBarRect = uiGetWindowTopbarRect(ui, winID);
+	drawRect(sdlRenderer, topBarRect, win->color);
+
+	SDL_Rect contentRect = uiGetWindowContentRect(ui, winID);
+	SDL_Color contentRectBGColor = {.r = 0, .g = 0, .b = 0, .a = 255};
+	drawRect(sdlRenderer, contentRect, contentRectBGColor);
 }
 
 void
@@ -286,7 +375,7 @@ SDL_main(int argc, char* argv[]) {
 
 					for (i32 winOrderIndex = UIWindowID_Count - 1; winOrderIndex >= 0; winOrderIndex--) {
 						UIWindowID winID = ui.windowOrder[winOrderIndex];
-						drawRect(sdlRenderer, ui.windows[winID].rect, ui.windows[winID].color);
+						drawWindow(sdlRenderer, &ui, winID);
 					}
 
 					SDL_Color dockRectColor = {.r = 0, .g = 0, .b = 255, .a = 255};
