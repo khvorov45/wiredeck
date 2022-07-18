@@ -3,8 +3,6 @@
 	#error build only set up for windows
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
 
 #if PLATFORM_WINDOWS
@@ -19,7 +17,7 @@
 #define arrLen(x) (sizeof(x) / sizeof((x)[0]))
 
 #if PLATFORM_WINDOWS
-	#define assert(cond) if (!(cond)) DebugBreak()
+	#define assert(cond) do {if (!(cond)) {DebugBreak(); ExitProcess(1);}} while(0)
 #endif
 
 typedef char* cstring;
@@ -80,116 +78,221 @@ cstringLen(cstring str) {
 	return result;
 }
 
-cstring
-cstringFrom(cstring str, i32 strLen) {
-	cstring result = calloc(strLen + 1, 1);
-	memcpy(result, str, strLen);
+#if PLATFORM_WINDOWS
+
+void*
+allocZero(i32 size) {
+	HANDLE heap = GetProcessHeap();
+	void* result = HeapAlloc(heap, HEAP_ZERO_MEMORY, size);
+	assert(result);
+	return result;
+}
+
+void*
+reallocZeroExtra(void* ptr, i32 newSize) {
+	HANDLE heap = GetProcessHeap();
+
+	void* result = 0;
+	if (ptr) {
+		result = HeapReAlloc(heap, HEAP_ZERO_MEMORY, ptr, newSize);
+	} else {
+		result = allocZero(newSize);
+	}
+
+	assert(result);
 	return result;
 }
 
 void
-dynCStringGrow(DynCstring* dynCString, i32 atLeast) {
-	if (dynCString->cap == 0) {
-		dynCString->cap = 10;
+freeMemory(void* ptr) {
+	HANDLE heap = GetProcessHeap();
+	HeapFree(heap, 0, ptr);
+}
+
+void
+copyMemory(void* dest, void* source, i32 size) {
+	CopyMemory(dest, source, size);
+}
+
+void
+removeFileIfExists(cstring path) {
+	if (path) {
+		DeleteFileA(path);
 	}
-	i32 by = dynCString->cap;
+}
+
+void
+createDirIfNotExists(cstring path) {
+	CreateDirectory(path, 0);
+}
+
+void
+clearDir(cstring path) {
+	i32 pathLen = cstringLen(path);
+	cstring pathDoubleNull = allocZero(pathLen + 2);
+	copyMemory(pathDoubleNull, path, pathLen);
+
+	SHFILEOPSTRUCTA fileop = {0};
+	fileop.wFunc = FO_DELETE;
+	fileop.pFrom = pathDoubleNull;
+	fileop.fFlags = FOF_NO_UI;
+	SHFileOperationA(&fileop);
+
+	freeMemory(pathDoubleNull);
+
+	createDirIfNotExists(path);
+}
+
+u64
+getLastModifiedFromPattern(cstring pattern) {
+	u64 result = 0;
+
+	WIN32_FIND_DATAA findData;
+	HANDLE firstHandle = FindFirstFileA(pattern, &findData);
+	if (firstHandle != INVALID_HANDLE_VALUE) {
+
+		u64 thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+		result = max(result, thisLastMod);
+		while (FindNextFileA(firstHandle, &findData)) {
+			thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
+			result = max(result, thisLastMod);
+		}
+		FindClose(firstHandle);
+	}
+
+	return result;
+}
+
+void
+logMessage(i32 argCount, ...) {
+	HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+
+	va_list list;
+	va_start(list, argCount);
+
+	for (i32 argIndex = 0; argIndex < argCount; argIndex++) {
+		cstring str = va_arg(list, cstring);
+		i32 len = cstringLen(str);
+		WriteFile(out, str, len, 0, 0);
+	}
+
+	va_end(list);
+}
+
+void
+execShellCmd(cstring cmd) {
+	STARTUPINFOA startupInfo = {0};
+	startupInfo.cb = sizeof(STARTUPINFOA);
+
+	PROCESS_INFORMATION processInfo;
+	if (CreateProcessA(0, cmd, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo)) {
+		WaitForSingleObject(processInfo.hProcess, INFINITE);
+	}
+}
+
+#endif
+
+cstring
+cstringFrom(cstring str, i32 strLen) {
+	cstring result = allocZero(strLen + 1);
+	copyMemory(result, str, strLen);
+	return result;
+}
+
+void
+dcsGrow(DynCstring* dcs, i32 atLeast) {
+	if (dcs->cap == 0) {
+		dcs->cap = 10;
+	}
+	i32 by = dcs->cap;
 	if (by < atLeast) {
 		by = atLeast;
 	}
-	dynCString->cap += by + 1; // NOTE(khvorov) Null terminator
-	dynCString->buf = realloc(dynCString->buf, dynCString->cap);
-	memset(dynCString->buf + dynCString->len, 0, dynCString->cap - dynCString->len);
+	dcs->cap += by + 1; // NOTE(khvorov) Null terminator
+	dcs->buf = reallocZeroExtra(dcs->buf, dcs->cap);
 }
 
 void
-dynCStringPush(DynCstring* dynCString, cstring src) {
-	assert(dynCString->len <= dynCString->cap);
-	i32 free = dynCString->cap - dynCString->len;
-	i32 srcLen = cstringLen(src);
-	if (free < srcLen) {
-		dynCStringGrow(dynCString, srcLen - free);
+dcsPush(DynCstring* dcs, i32 count, ...) {
+
+	va_list list;
+	va_start(list, count);
+
+	for (i32 argIndex = 0; argIndex < count; argIndex++) {
+		cstring src = va_arg(list, cstring);
+
+		assert(dcs->len <= dcs->cap);
+		i32 free = dcs->cap - dcs->len;
+		i32 srcLen = cstringLen(src);
+		if (free < srcLen) {
+			dcsGrow(dcs, srcLen - free);
+		}
+		assert(dcs->cap - dcs->len >= srcLen);
+		copyMemory(dcs->buf + dcs->len, src, srcLen);
+		dcs->len += srcLen;
 	}
-	assert(dynCString->cap - dynCString->len >= srcLen);
-	memcpy(dynCString->buf + dynCString->len, src, srcLen);
-	dynCString->len += srcLen;
+
+	va_end(list);
 }
 
 void
-dynCStringMark(DynCstring* dynCString) {
-	assert(dynCString->markersLen < arrLen(dynCString->markers));
-	dynCString->markers[dynCString->markersLen++] = dynCString->len;
+dcsMark(DynCstring* dcs) {
+	assert(dcs->markersLen < arrLen(dcs->markers));
+	dcs->markers[dcs->markersLen++] = dcs->len;
 }
 
 cstring
-dynCStringCloneCstringFromMarker(DynCstring* dynCString) {
-	assert(dynCString->markersLen > 0);
-	i32 marker = dynCString->markers[--dynCString->markersLen];
-	cstring result = cstringFrom(dynCString->buf + marker, dynCString->len - marker);
+dcsCloneCstringFromMarker(DynCstring* dcs) {
+	assert(dcs->markersLen > 0);
+	i32 marker = dcs->markers[--dcs->markersLen];
+	cstring result = cstringFrom(dcs->buf + marker, dcs->len - marker);
 	return result;
 }
+
+#if PLATFORM_WINDOWS
 
 CompileCmd
 constructCompileCommand(Builder builder, Step step) {
 
 	DynCstring cmdBuilder = {0};
 
-	#if PLATFORM_WINDOWS
-		dynCStringPush(&cmdBuilder, "cl /nologo /diagnostics:column ");
-	#endif
+	dcsPush(&cmdBuilder, 1, "cl /nologo /diagnostics:column ");
 
 	if (step.kind == BuildKind_Lib) {
-		dynCStringPush(&cmdBuilder, "-c ");
+		dcsPush(&cmdBuilder, 1, "-c ");
 	}
 
 	for (i32 flagIndex = 0; flagIndex < step.flagsLen; flagIndex++) {
-		dynCStringPush(&cmdBuilder, step.flags[flagIndex]);
-		dynCStringPush(&cmdBuilder, " ");
+		dcsPush(&cmdBuilder, 2, step.flags[flagIndex], " ");
 	}
-
-	#if PLATFORM_WINDOWS
-		cstring debugFlags = "/Zi ";
-	#endif
 
 	switch (builder.mode) {
-	case BuildMode_Debug: dynCStringPush(&cmdBuilder, debugFlags); break;
+	case BuildMode_Debug: dcsPush(&cmdBuilder, 1, "/Zi "); break;
 	}
 
-	cstring pdbPath = 0;
+	// NOTE(khvorov) obj output
+	dcsPush(&cmdBuilder, 1, "/Fo");
+	dcsMark(&cmdBuilder);
+	dcsPush(&cmdBuilder, 3, builder.outDir, "/", step.name);
+	cstring objDir = dcsCloneCstringFromMarker(&cmdBuilder);
+	dcsPush(&cmdBuilder, 1, "/ ");
 
-	#if PLATFORM_WINDOWS
+	// NOTE(khvorov) pdb output
+	dcsPush(&cmdBuilder, 1, "/Fd");
+	dcsMark(&cmdBuilder);
+	dcsPush(&cmdBuilder, 4, builder.outDir, "/", step.name, ".pdb");
+	cstring pdbPath = dcsCloneCstringFromMarker(&cmdBuilder);
+	dcsPush(&cmdBuilder, 1, " ");
 
-		// NOTE(khvorov) obj output
-		dynCStringPush(&cmdBuilder, "/Fo");
-		dynCStringMark(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, builder.outDir);
-		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, step.name);
-		cstring objDir = dynCStringCloneCstringFromMarker(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, "/ ");
-
-		// NOTE(khvorov) pdb output
-		dynCStringPush(&cmdBuilder, "/Fd");
-		dynCStringMark(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, builder.outDir);
-		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, step.name);
-		dynCStringPush(&cmdBuilder, ".pdb ");
-		pdbPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
-
-		// NOTE(khvorov) exe output
-		dynCStringPush(&cmdBuilder, "/Fe");
-		dynCStringMark(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, builder.outDir);
-		dynCStringPush(&cmdBuilder, "/");
-		dynCStringPush(&cmdBuilder, step.name);
-		dynCStringPush(&cmdBuilder, ".exe");
-		cstring outPath = dynCStringCloneCstringFromMarker(&cmdBuilder);
-		dynCStringPush(&cmdBuilder, " ");
-	#endif
+	// NOTE(khvorov) exe output
+	dcsPush(&cmdBuilder, 1, "/Fe");
+	dcsMark(&cmdBuilder);
+	dcsPush(&cmdBuilder, 4, builder.outDir, "/", step.name, ".exe");
+	cstring outPath = dcsCloneCstringFromMarker(&cmdBuilder);
+	dcsPush(&cmdBuilder, 1, " ");
 
 	for (i32 srcIndex = 0; srcIndex < step.sourcesLen; srcIndex++) {
-		dynCStringPush(&cmdBuilder, step.sources[srcIndex]);
-		dynCStringPush(&cmdBuilder, " ");
+		dcsPush(&cmdBuilder, 2, step.sources[srcIndex], " ");
 	}
 
 	cstring libCmd = 0;
@@ -197,38 +300,26 @@ constructCompileCommand(Builder builder, Step step) {
 	if (step.kind == BuildKind_Lib) {
 		DynCstring libCmdBuilder = {0};
 
-		dynCStringMark(&libCmdBuilder);
+		dcsMark(&libCmdBuilder);
 
-		#if PLATFORM_WINDOWS
-			dynCStringPush(&libCmdBuilder, "lib /nologo ");
-			dynCStringPush(&libCmdBuilder, objDir);
-			dynCStringPush(&libCmdBuilder, "/*.obj -out:");
+		dcsPush(&libCmdBuilder, 3, "lib /nologo ", objDir, "/*.obj -out:");
 
-			dynCStringMark(&libCmdBuilder);
-			dynCStringPush(&libCmdBuilder, builder.outDir);
-			dynCStringPush(&libCmdBuilder, "/");
-			dynCStringPush(&libCmdBuilder, step.name);
-			dynCStringPush(&libCmdBuilder, ".lib");
-			outPath = dynCStringCloneCstringFromMarker(&libCmdBuilder);
-		#endif
+		dcsMark(&libCmdBuilder);
+		dcsPush(&libCmdBuilder, 4, builder.outDir, "/", step.name, ".lib");
+		outPath = dcsCloneCstringFromMarker(&libCmdBuilder);
 
-		libCmd = dynCStringCloneCstringFromMarker(&libCmdBuilder);
+		libCmd = dcsCloneCstringFromMarker(&libCmdBuilder);
 	}
 
 	if (step.kind == BuildKind_Exe) {
 
 		if (step.linkLen > 0) {
-			#if PLATFORM_WINDOWS
-				dynCStringPush(&cmdBuilder, "/link /incremental:no /subsystem:windows ");
-			#endif
+			dcsPush(&cmdBuilder, 1, "/link /incremental:no /subsystem:windows ");
 		}
 
 		for (i32 linkIndex = 0; linkIndex < step.linkLen; linkIndex++) {
 			cstring thisLink = step.link[linkIndex];
-			#if PLATFORM_WINDOWS
-				dynCStringPush(&cmdBuilder, thisLink);
-				dynCStringPush(&cmdBuilder, " ");
-			#endif
+			dcsPush(&cmdBuilder, 2, thisLink, " ");
 		}
 	}
 
@@ -243,63 +334,7 @@ constructCompileCommand(Builder builder, Step step) {
 	return result;
 }
 
-void
-createDirIfNotExists(cstring path) {
-	#if PLATFORM_WINDOWS
-		CreateDirectory(path, 0);
-	#endif
-}
-
-void
-clearDir(cstring path) {
-	#if PLATFORM_WINDOWS
-		i32 pathLen = cstringLen(path);
-		cstring pathDoubleNull = calloc(pathLen + 2, 1);
-		memcpy(pathDoubleNull, path, pathLen);
-
-		SHFILEOPSTRUCTA fileop = {0};
-		fileop.wFunc = FO_DELETE;
-		fileop.pFrom = pathDoubleNull;
-		fileop.fFlags = FOF_NO_UI;
-		SHFileOperationA(&fileop);
-
-		free(pathDoubleNull);
-	#endif
-
-	createDirIfNotExists(path);
-}
-
-void
-cmdRunLog(CompileCmd* cmd) {
-	printf("RUN %s; objDir: '%s'; out: '%s'\n", cmd->name, cmd->objDir, cmd->outPath);
-}
-
-void
-cmdNoRunLog(CompileCmd* cmd) {
-	printf("SKIP %s\n", cmd->name);
-}
-
-u64
-getLastModifiedFromPattern(cstring pattern) {
-	u64 result = 0;
-
-	#if PLATFORM_WINDOWS
-		WIN32_FIND_DATAA findData;
-		HANDLE firstHandle = FindFirstFileA(pattern, &findData);
-		if (firstHandle != INVALID_HANDLE_VALUE) {
-
-			u64 thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-			result = max(result, thisLastMod);
-			while (FindNextFileA(firstHandle, &findData)) {
-				thisLastMod = ((u64)findData.ftLastWriteTime.dwHighDateTime << 32) | findData.ftLastWriteTime.dwLowDateTime;
-				result = max(result, thisLastMod);
-			}
-			FindClose(firstHandle);
-		}
-	#endif
-
-	return result;
-}
+#endif
 
 u64
 getLastModifiedFromPatterns(cstring* patterns, i32 patternsLen) {
@@ -330,35 +365,12 @@ newBuilder(BuildMode mode) {
 }
 
 void
-execShellCmd(cstring cmd) {
-	#if PLATFORM_WINDOWS
-		STARTUPINFOA startupInfo = {0};
-		startupInfo.cb = sizeof(STARTUPINFOA);
-
-		PROCESS_INFORMATION processInfo;
-		if (CreateProcessA(0, cmd, 0, 0, 0, 0, 0, 0, &startupInfo, &processInfo) == 0) {
-			printf("ERR: failed to run\n%s\n", cmd);
-		} else {
-			printf("OK: run\n%s\n", cmd);
-			WaitForSingleObject(processInfo.hProcess, INFINITE);
-		}
-	#endif
-}
-
-void
 cmdRun(CompileCmd* cmd) {
+	logMessage(5, "RUN: ", cmd->name, "\n", cmd->cmd, "\n\n");
 	execShellCmd(cmd->cmd);
 	if (cmd->libCmd) {
+		logMessage(5, "\nRUN: ", cmd->name, " LIB\n", cmd->libCmd, "\n\n");
 		execShellCmd(cmd->libCmd);
-	}
-}
-
-void
-removeFileIfExists(cstring path) {
-	if (path) {
-		#if PLATFORM_WINDOWS
-			DeleteFileA(path);
-		#endif
 	}
 }
 
@@ -371,17 +383,14 @@ execStep(Builder builder, Step step) {
 	u64 depTime = getLastModifiedFromPatterns(step.link, step.linkLen);
 	u64 extraTime = getLastModifiedFromPatterns(step.extraWatch, step.extraWatchLen);
 
-	printf("\n\n");
-
 	if (inTime > outTime || depTime > outTime || extraTime > outTime) {
 		createDirIfNotExists(builder.outDir);
 		clearDir(cmd.objDir);
 		removeFileIfExists(cmd.outPath);
 		removeFileIfExists(cmd.pdbPath);
-		cmdRunLog(&cmd);
 		cmdRun(&cmd);
 	} else {
-		cmdNoRunLog(&cmd);
+		logMessage(3, "SKIP: ", cmd.name, "\n");
 	}
 
 	return cmd;
@@ -539,8 +548,8 @@ main() {
 		sdlCmd.outPath,
 		freetypeCmd.outPath,
 		#if PLATFORM_WINDOWS
-		"Ole32.lib", "Advapi32.lib", "Winmm.lib", "User32.lib", "Gdi32.lib",
-		"OleAut32.lib", "Imm32.lib", "Shell32.lib", "Version.lib",
+			"Ole32.lib", "Advapi32.lib", "Winmm.lib", "User32.lib", "Gdi32.lib",
+			"OleAut32.lib", "Imm32.lib", "Shell32.lib", "Version.lib",
 		#endif
 	};
 
